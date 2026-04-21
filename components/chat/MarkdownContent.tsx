@@ -1,0 +1,218 @@
+"use client";
+
+import React from "react";
+
+// Lightweight markdown renderer — no external dependencies
+export default function MarkdownContent({ content }: { content: string }) {
+  const lines = content.split("\n");
+  const elements: React.ReactNode[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Blank line
+    if (line.trim() === "") {
+      i++;
+      continue;
+    }
+
+    // H1
+    if (line.startsWith("# ")) {
+      elements.push(
+        <h1 key={i} className="text-base font-semibold text-apple-gray-950 mt-3 mb-1.5 first:mt-0">
+          {renderInline(line.slice(2))}
+        </h1>
+      );
+      i++;
+      continue;
+    }
+
+    // H2
+    if (line.startsWith("## ")) {
+      elements.push(
+        <h2 key={i} className="text-sm font-semibold text-apple-gray-800 mt-3 mb-1 first:mt-0">
+          {renderInline(line.slice(3))}
+        </h2>
+      );
+      i++;
+      continue;
+    }
+
+    // H3
+    if (line.startsWith("### ")) {
+      elements.push(
+        <h3 key={i} className="text-sm font-medium text-apple-gray-700 mt-2 mb-0.5 first:mt-0">
+          {renderInline(line.slice(4))}
+        </h3>
+      );
+      i++;
+      continue;
+    }
+
+    // Horizontal rule
+    if (line.match(/^(-{3,}|\*{3,}|_{3,})$/)) {
+      elements.push(<hr key={i} className="border-apple-gray-200 my-3" />);
+      i++;
+      continue;
+    }
+
+    // Table
+    if (line.includes("|") && lines[i + 1]?.match(/^\|?[\s\-|]+\|?$/)) {
+      const tableLines: string[] = [];
+      while (i < lines.length && lines[i].includes("|")) {
+        tableLines.push(lines[i]);
+        i++;
+      }
+      elements.push(renderTable(tableLines, i));
+      continue;
+    }
+
+    // Unordered list — collect all consecutive list items
+    if (line.match(/^[-*+] /)) {
+      const items: string[] = [];
+      while (i < lines.length && lines[i].match(/^[-*+] /)) {
+        items.push(lines[i].replace(/^[-*+] /, ""));
+        i++;
+      }
+      elements.push(
+        <ul key={`ul-${i}`} className="mb-2 space-y-0.5 pl-1">
+          {items.map((item, idx) => (
+            <li key={idx} className="flex gap-2 text-sm leading-relaxed">
+              <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-apple-gray-400 flex-shrink-0" />
+              <span>{renderInline(item)}</span>
+            </li>
+          ))}
+        </ul>
+      );
+      continue;
+    }
+
+    // Ordered list
+    if (line.match(/^\d+\. /)) {
+      const items: string[] = [];
+      while (i < lines.length && lines[i].match(/^\d+\. /)) {
+        items.push(lines[i].replace(/^\d+\. /, ""));
+        i++;
+      }
+      elements.push(
+        <ol key={`ol-${i}`} className="mb-2 space-y-0.5 pl-1">
+          {items.map((item, idx) => (
+            <li key={idx} className="flex gap-2 text-sm leading-relaxed">
+              <span className="flex-shrink-0 font-medium text-apple-gray-500 text-xs w-4 mt-0.5">{idx + 1}.</span>
+              <span>{renderInline(item)}</span>
+            </li>
+          ))}
+        </ol>
+      );
+      continue;
+    }
+
+    // Code block
+    if (line.startsWith("```")) {
+      const codeLines: string[] = [];
+      i++;
+      while (i < lines.length && !lines[i].startsWith("```")) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      i++; // skip closing ```
+      elements.push(
+        <pre key={`code-${i}`} className="bg-apple-gray-100 rounded-apple-md px-3 py-2.5 my-2 overflow-x-auto">
+          <code className="text-xs font-mono text-apple-gray-800">{codeLines.join("\n")}</code>
+        </pre>
+      );
+      continue;
+    }
+
+    // Blockquote
+    if (line.startsWith("> ")) {
+      const quoteLines: string[] = [];
+      while (i < lines.length && lines[i].startsWith("> ")) {
+        quoteLines.push(lines[i].slice(2));
+        i++;
+      }
+      elements.push(
+        <blockquote key={`bq-${i}`} className="border-l-2 border-apple-gray-300 pl-3 text-apple-gray-600 italic my-2 text-sm">
+          {quoteLines.map((l, idx) => <p key={idx}>{renderInline(l)}</p>)}
+        </blockquote>
+      );
+      continue;
+    }
+
+    // Regular paragraph
+    elements.push(
+      <p key={i} className="text-sm leading-relaxed mb-1.5 last:mb-0">
+        {renderInline(line)}
+      </p>
+    );
+    i++;
+  }
+
+  return <div className="space-y-0.5">{elements}</div>;
+}
+
+function renderTable(rows: string[], keyBase: number): React.ReactNode {
+  const parsed = rows.map((r) =>
+    r.split("|").filter((_, i, arr) => !(i === 0 && arr[0] === "") && !(i === arr.length - 1 && arr[arr.length - 1] === "")).map((c) => c.trim())
+  );
+  const header = parsed[0];
+  const body = parsed.slice(2); // skip separator row
+
+  return (
+    <div key={`table-${keyBase}`} className="overflow-x-auto my-2">
+      <table className="w-full text-xs border-collapse">
+        <thead>
+          <tr className="bg-apple-gray-100">
+            {header.map((cell, i) => (
+              <th key={i} className="px-3 py-1.5 text-left font-semibold text-apple-gray-700 border border-apple-gray-200">
+                {renderInline(cell)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {body.map((row, ri) => (
+            <tr key={ri} className={ri % 2 === 0 ? "bg-white" : "bg-apple-gray-50"}>
+              {row.map((cell, ci) => (
+                <td key={ci} className="px-3 py-1.5 border border-apple-gray-200 text-apple-gray-800">
+                  {renderInline(cell)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function renderInline(text: string): React.ReactNode {
+  // Process: bold, italic, code, links
+  const parts: React.ReactNode[] = [];
+  const regex = /(\*\*(.+?)\*\*)|(\*(.+?)\*)|(`(.+?)`)|(\[(.+?)\]\((.+?)\))/g;
+  let last = 0;
+  let match;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > last) {
+      parts.push(text.slice(last, match.index));
+    }
+    if (match[1]) {
+      parts.push(<strong key={match.index} className="font-semibold text-apple-gray-950">{match[2]}</strong>);
+    } else if (match[3]) {
+      parts.push(<em key={match.index} className="italic">{match[4]}</em>);
+    } else if (match[5]) {
+      parts.push(<code key={match.index} className="bg-apple-gray-100 rounded px-1 py-0.5 text-xs font-mono">{match[6]}</code>);
+    } else if (match[7]) {
+      parts.push(<a key={match.index} href={match[9]} className="text-blue-600 underline" target="_blank" rel="noopener noreferrer">{match[8]}</a>);
+    }
+    last = match.index + match[0].length;
+  }
+
+  if (last < text.length) {
+    parts.push(text.slice(last));
+  }
+
+  return parts.length === 1 ? parts[0] : parts;
+}

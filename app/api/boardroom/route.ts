@@ -3,6 +3,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { SYSTEM_PROMPTS, type AgentKey } from "@/lib/agents";
+import { readKnowledgeBase } from "@/lib/tools/knowledge";
+import { AGENT_TOOLS, callAgentWithTools } from "@/lib/agent-tools";
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -48,6 +50,11 @@ export async function POST(req: NextRequest) {
       content: m.content,
     }));
 
+  const knowledgeBase = await readKnowledgeBase();
+  const knowledgeSuffix = knowledgeBase
+    ? `\n\n---\n## LineSkip Knowledge Base (live)\n${knowledgeBase}\n---`
+    : "";
+
   const systemSuffix = `
 The user sent this to the Boardroom: "${message}"
 Only respond if this is relevant to your specific role. If it's outside your domain, respond with exactly: SKIP`;
@@ -55,18 +62,14 @@ Only respond if this is relevant to your specific role. If it's outside your dom
   // Fan out to all boardroom agents in parallel
   const results = await Promise.allSettled(
     BOARDROOM_AGENTS.map(async (agentKey) => {
-      const response = await anthropic.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 1024,
-        system: SYSTEM_PROMPTS[agentKey] + systemSuffix,
-        messages: [
-          ...historyMessages,
-          { role: "user", content: message },
-        ],
-      });
-
-      const content =
-        response.content[0]?.type === "text" ? response.content[0].text : "";
+      const tools = AGENT_TOOLS[agentKey] ?? [];
+      const content = await callAgentWithTools(
+        SYSTEM_PROMPTS[agentKey] + knowledgeSuffix + systemSuffix,
+        [...historyMessages, { role: "user", content: message }],
+        tools,
+        anthropic,
+        1024
+      );
       return { agentKey, content };
     })
   );

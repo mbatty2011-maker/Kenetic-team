@@ -6,6 +6,7 @@ import Link from "next/link";
 import { User } from "@supabase/supabase-js";
 import { AGENTS } from "@/lib/agents";
 import { createClient } from "@/lib/supabase/client";
+import NewTaskModal from "@/components/chat/NewTaskModal";
 
 interface Conversation {
   id: string;
@@ -27,13 +28,24 @@ export default function Sidebar({
   const supabase = createClient();
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [showNewTask, setShowNewTask] = useState(false);
+  const [pendingTaskCount, setPendingTaskCount] = useState(0);
 
   const currentAgent = pathname.split("/")[2] || "alex";
 
   useEffect(() => {
     loadConversations();
+    loadPendingTasks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function loadPendingTasks() {
+    const { count } = await supabase
+      .from("tasks")
+      .select("*", { count: "exact", head: true })
+      .in("status", ["running", "awaiting_confirmation"]);
+    setPendingTaskCount(count ?? 0);
+  }
 
   async function loadConversations() {
     const { data } = await supabase
@@ -211,8 +223,48 @@ export default function Sidebar({
           );
         })}
 
-        {/* Boardroom */}
+        {/* Tasks section */}
         <div className="mt-2">
+          <div className="mx-2 border-t border-white/8 mb-2" />
+
+          {/* New Task button */}
+          <button
+            onClick={() => setShowNewTask(true)}
+            className="w-full flex items-center gap-2.5 px-2 py-2 rounded-apple-md hover:bg-white/6 transition-colors text-left"
+          >
+            <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M6 1v10M1 6h10" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeOpacity="0.8" />
+              </svg>
+            </div>
+            <span className="text-white/70 text-sm">New Task</span>
+          </button>
+
+          {/* Task history link */}
+          <Link
+            href="/chat/tasks"
+            onClick={onClose}
+            className={`flex items-center justify-between gap-2.5 px-2 py-2 rounded-apple-md hover:bg-white/6 transition-colors ${currentAgent === "tasks" ? "bg-white/12" : ""}`}
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <rect x="2" y="2" width="10" height="10" rx="2" stroke="white" strokeWidth="1.3" strokeOpacity="0.6" />
+                  <path d="M4.5 7l2 2L9.5 5" stroke="white" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" strokeOpacity="0.6" />
+                </svg>
+              </div>
+              <span className="text-white/60 text-sm">Tasks</span>
+            </div>
+            {pendingTaskCount > 0 && (
+              <span className="bg-blue-500 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded-full">
+                {pendingTaskCount}
+              </span>
+            )}
+          </Link>
+        </div>
+
+        {/* Boardroom */}
+        <div className="mt-1">
           <div className="mx-2 border-t border-white/8 mb-2" />
           <Link
             href="/chat/boardroom"
@@ -265,6 +317,7 @@ export default function Sidebar({
           <span className="text-white/60 text-sm">Sign out</span>
         </button>
       </div>
+      {showNewTask && <NewTaskModal onClose={() => { setShowNewTask(false); loadPendingTasks(); }} />}
     </div>
   );
 }

@@ -25,6 +25,8 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [toolStatus, setToolStatus] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
 
   const agent = agentKey !== "boardroom" ? AGENTS.find((a) => a.key === agentKey) : null;
@@ -143,34 +145,43 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let fullContent = "";
+      let buffer = "";
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n");
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
         for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6);
-            if (data === "[DONE]") break;
-            try {
-              const parsed = JSON.parse(data);
-              if (parsed.text) {
-                fullContent += parsed.text;
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === streamingId
-                      ? { ...m, content: fullContent, isStreaming: true }
-                      : m
-                  )
-                );
-              }
-            } catch {}
-          }
+          if (!line.startsWith("data: ")) continue;
+          const data = line.slice(6).trim();
+          if (data === "[DONE]") continue;
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.type === "searching") {
+              setIsSearching(true);
+            } else if (parsed.type === "tool_running") {
+              setIsSearching(false);
+              setToolStatus(parsed.label ?? parsed.tool ?? "Working...");
+            } else if (parsed.text) {
+              setIsSearching(false);
+              setToolStatus(null);
+              fullContent += parsed.text;
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === streamingId
+                    ? { ...m, content: fullContent, isStreaming: true }
+                    : m
+                )
+              );
+            }
+          } catch {}
         }
       }
 
-      // Mark streaming done
+      setIsSearching(false);
+      setToolStatus(null);
       setMessages((prev) =>
         prev.map((m) =>
           m.id === streamingId ? { ...m, isStreaming: false } : m
@@ -290,7 +301,25 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
           <MessageBubble key={msg.id} message={msg} currentAgentKey={agentKey} />
         ))}
 
-        {isLoading && !messages.some((m) => m.isStreaming) && (
+        {(isSearching || toolStatus) && (
+          <div className="flex items-center gap-2 animate-fade-in">
+            <div
+              className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0"
+              style={{ background: agent?.accent || "#48484A" }}
+            >
+              {agent?.initials ?? "?"}
+            </div>
+            <div className="flex items-center gap-2 px-4 py-2.5 bg-apple-gray-50 border border-apple-gray-100 rounded-apple-2xl rounded-tl-apple-sm">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="text-apple-gray-500 animate-spin" style={{ animationDuration: "1.5s" }}>
+                <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.5" strokeDasharray="14 8" />
+              </svg>
+              <span className="text-xs text-apple-gray-500">
+                {toolStatus ?? "Searching the web..."}
+              </span>
+            </div>
+          </div>
+        )}
+        {isLoading && !isSearching && !toolStatus && !messages.some((m) => m.isStreaming && m.content.length > 0) && (
           <TypingIndicator agentKey={agentKey} />
         )}
 

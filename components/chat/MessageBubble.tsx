@@ -1,6 +1,7 @@
 "use client";
 
 import { AGENTS } from "@/lib/agents";
+import MarkdownContent from "./MarkdownContent";
 
 interface Message {
   id: string;
@@ -20,8 +21,6 @@ export default function MessageBubble({
 }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
-
-  // Find the agent who sent this message
   const senderAgent = message.agent_key
     ? AGENTS.find((a) => a.key === message.agent_key)
     : null;
@@ -42,9 +41,7 @@ export default function MessageBubble({
       <div className="flex justify-end animate-slide-in-right">
         <div
           className="max-w-[75%] px-4 py-2.5 rounded-apple-2xl rounded-br-apple-sm text-white text-sm leading-relaxed whitespace-pre-wrap break-words"
-          style={{
-            background: senderAgent?.accent || "#1C1C1E",
-          }}
+          style={{ background: senderAgent?.accent || "#1C1C1E" }}
         >
           {message.content}
         </div>
@@ -52,41 +49,36 @@ export default function MessageBubble({
     );
   }
 
-  // Assistant message
   return (
-    <div className="flex items-end gap-2 animate-slide-in-left">
-      {/* Agent avatar */}
+    <div className="flex items-start gap-2 animate-slide-in-left">
       <div
-        className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0 mb-0.5"
-        style={{
-          background: senderAgent?.accent || "#48484A",
-        }}
+        className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0 mt-0.5"
+        style={{ background: senderAgent?.accent || "#48484A" }}
       >
         {senderAgent?.initials ?? "?"}
       </div>
 
-      {/* Bubble */}
-      <div className="max-w-[75%]">
-        {/* Agent name for boardroom */}
+      <div className="max-w-[78%] min-w-0">
         {currentAgentKey === "boardroom" && senderAgent && (
           <div
-            className="text-xs font-medium mb-1 ml-1"
+            className="text-xs font-semibold mb-1.5 ml-0.5"
             style={{ color: senderAgent.accent }}
           >
             {senderAgent.name} · {senderAgent.role}
           </div>
         )}
 
-        <div
-          className={`
-            px-4 py-2.5 rounded-apple-2xl rounded-bl-apple-sm
-            bg-apple-gray-50 text-apple-gray-950 text-sm leading-relaxed
-            whitespace-pre-wrap break-words
-            border border-apple-gray-100
-            ${message.isStreaming ? "after:content-['▋'] after:ml-0.5 after:animate-pulse" : ""}
-          `}
-        >
-          {message.content || (message.isStreaming ? "" : "...")}
+        <div className="px-4 py-3 rounded-apple-2xl rounded-tl-apple-sm bg-apple-gray-50 border border-apple-gray-100">
+          {message.content ? (
+            <>
+              <MarkdownContent content={message.content} />
+              {message.isStreaming && (
+                <span className="inline-block w-0.5 h-3.5 bg-apple-gray-400 ml-0.5 animate-pulse align-middle" />
+              )}
+            </>
+          ) : message.isStreaming ? (
+            <span className="inline-block w-0.5 h-3.5 bg-apple-gray-400 animate-pulse align-middle" />
+          ) : null}
         </div>
       </div>
     </div>

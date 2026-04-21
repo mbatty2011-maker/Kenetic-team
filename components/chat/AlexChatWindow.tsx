@@ -32,7 +32,8 @@ export default function AlexChatWindow() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const [orchestrationMode, setOrchestrationMode] = useState(false);
+  // null = normal mode, string = Alex asked clarifying Qs, next reply triggers orchestration
+  const [pendingOrchestrationTask, setPendingOrchestrationTask] = useState<string | null>(null);
   const [synthesis, setSynthesis] = useState<SynthesisData | null>(null);
 
   const alex = AGENTS.find((a) => a.key === "alex")!;
@@ -45,7 +46,7 @@ export default function AlexChatWindow() {
     } else {
       setMessages([]);
       setConversationId(null);
-      setOrchestrationMode(false);
+      setPendingOrchestrationTask(null);
       setSynthesis(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -111,23 +112,12 @@ export default function AlexChatWindow() {
     setIsLoading(true);
     setSynthesis(null);
 
-    // Check if we're already in orchestration mode (Alex asked clarifying questions)
-    if (orchestrationMode) {
-      // Check if previous alex message contains READY_TO_BRIEF
-      const lastAlexMsg = [...messages].reverse().find((m) => m.role === "assistant");
-      if (lastAlexMsg?.content.includes("READY_TO_BRIEF:")) {
-        // Extract task summary and run full orchestration
-        const taskMatch = lastAlexMsg.content.match(/READY_TO_BRIEF:\s*(.+)/);
-        const taskSummary = taskMatch?.[1]?.trim() || content;
-        await runOrchestration(cid, user.id, taskSummary);
-        setIsLoading(false);
-        return;
-      }
-
-      // Still in clarification — check if user answered and Alex is ready
-      await streamAlexResponse(content, cid, user.id, "clarify");
+    if (pendingOrchestrationTask) {
+      // User has answered Alex's clarifying questions — run full orchestration now
+      await runOrchestration(cid, user.id, pendingOrchestrationTask, content);
+      setPendingOrchestrationTask(null);
     } else {
-      await streamAlexResponse(content, cid, user.id, "classify");
+      await streamAlexResponse(content, cid, user.id);
     }
 
     setIsLoading(false);
@@ -137,7 +127,6 @@ export default function AlexChatWindow() {
     content: string,
     cid: string,
     uid: string,
-    mode: string
   ) {
     const streamingId = crypto.randomUUID();
     setMessages((prev) => [
@@ -156,7 +145,7 @@ export default function AlexChatWindow() {
       const res = await fetch("/api/alex", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: content, conversationId: cid, mode }),
+        body: JSON.stringify({ message: content, conversationId: cid, mode: "classify" }),
       });
 
       if (!res.body) throw new Error("No body");
@@ -164,21 +153,24 @@ export default function AlexChatWindow() {
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let fullContent = "";
+      let buffer = "";
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n");
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
 
         for (const line of lines) {
           if (!line.startsWith("data: ")) continue;
-          const data = line.slice(6);
-          if (data === "[DONE]") break;
+          const data = line.slice(6).trim();
+          if (data === "[DONE]") continue;
           try {
             const parsed = JSON.parse(data);
             if (parsed.type === "orchestrate_start") {
-              setOrchestrationMode(true);
+              // Signal received — next user reply will trigger full orchestration
+              setPendingOrchestrationTask(content);
             } else if (parsed.type === "text") {
               fullContent += parsed.text;
               setMessages((prev) =>
@@ -186,13 +178,6 @@ export default function AlexChatWindow() {
                   m.id === streamingId ? { ...m, content: fullContent } : m
                 )
               );
-
-              // Check if Alex said READY_TO_BRIEF — means next message triggers orchestration
-              if (fullContent.includes("READY_TO_BRIEF:")) {
-                setOrchestrationMode(true);
-              }
-            } else if (parsed.type === "done") {
-              break;
             }
           } catch {}
         }
@@ -223,9 +208,7 @@ export default function AlexChatWindow() {
     }
   }
 
-  async function runOrchestration(cid: string, uid: string, taskSummary: string) {
-    // Clear orchestration flag
-    setOrchestrationMode(false);
+  async function runOrchestration(cid: string, uid: string, taskSummary: string, clarification?: string) {
 
     const statusId = crypto.randomUUID();
 
@@ -233,23 +216,31 @@ export default function AlexChatWindow() {
       const res = await fetch("/api/alex", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: taskSummary, conversationId: cid, mode: "orchestrate" }),
+        body: JSON.stringify({
+          message: clarification
+            ? `${taskSummary}\n\nAdditional context from user: ${clarification}`
+            : taskSummary,
+          conversationId: cid,
+          mode: "orchestrate"
+        }),
       });
 
       if (!res.body) throw new Error("No body");
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
+      let buffer = "";
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n");
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
 
         for (const line of lines) {
           if (!line.startsWith("data: ")) continue;
-          const data = line.slice(6);
+          const data = line.slice(6).trim();
           try {
             const parsed = JSON.parse(data);
 
@@ -331,23 +322,9 @@ export default function AlexChatWindow() {
       });
 
       await res.json();
-      setSynthesis(null);
-
-      const successMsg: Message = {
-        id: crypto.randomUUID(),
-        role: "system",
-        content: `Sent to mbatty2011@gmail.com ✓`,
-        created_at: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, successMsg]);
+      // Don't dismiss the card — let it show its own "sent" state so user can read the content
     } catch {
-      const errorMsg: Message = {
-        id: crypto.randomUUID(),
-        role: "system",
-        content: "Failed to send email. Check Gmail configuration.",
-        created_at: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, errorMsg]);
+      // Email failed silently — card stays visible, user can still read content
     }
   }
 
@@ -379,7 +356,7 @@ export default function AlexChatWindow() {
           <MessageBubble key={msg.id} message={msg} currentAgentKey="alex" />
         ))}
 
-        {isLoading && !messages.some((m) => m.isStreaming) && (
+        {isLoading && !messages.some((m) => m.isStreaming && m.content.length > 0) && (
           <TypingIndicator agentKey="alex" />
         )}
 

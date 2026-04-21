@@ -3,6 +3,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { SYSTEM_PROMPTS, type AgentKey } from "@/lib/agents";
+import { readKnowledgeBase } from "@/lib/tools/knowledge";
+import { AGENT_TOOLS, callAgentWithTools, executeAgentTool, TOOL_LABELS } from "@/lib/agent-tools";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
@@ -62,6 +64,11 @@ export async function POST(req: NextRequest) {
     .filter((m) => m.role === "user" || m.role === "assistant")
     .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
 
+  const knowledgeBase = await readKnowledgeBase();
+  const knowledgeSection = knowledgeBase
+    ? `\n\n---\n## LineSkip Knowledge Base (live)\n${knowledgeBase}\n---`
+    : "";
+
   // Step 1: Classify intent (if not already in orchestration mode)
   if (!mode || mode === "classify") {
     const classifyResponse = await anthropic.messages.create({
@@ -81,29 +88,55 @@ export async function POST(req: NextRequest) {
     } catch {}
 
     if (intent.mode === "DIRECT_ANSWER") {
-      // Stream a direct response
+      const alexTools = AGENT_TOOLS.alex ?? [];
       const encoder = new TextEncoder();
       const stream = new ReadableStream({
         async start(controller) {
+          const send = (data: object) =>
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
           try {
-            const stream = anthropic.messages.stream({
-              model: "claude-sonnet-4-6",
-              max_tokens: 1024,
-              system: SYSTEM_PROMPTS.alex,
-              messages: [...historyMessages, { role: "user", content: message }],
-            });
+            let currentMessages: Anthropic.MessageParam[] = [
+              ...historyMessages,
+              { role: "user", content: message },
+            ];
 
-            for await (const event of stream) {
-              if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-                controller.enqueue(encoder.encode(
-                  `data: ${JSON.stringify({ type: "text", text: event.delta.text })}\n\n`
-                ));
+            while (true) {
+              const apiStream = anthropic.messages.stream({
+                model: "claude-sonnet-4-6",
+                max_tokens: 1024,
+                system: SYSTEM_PROMPTS.alex + knowledgeSection,
+                messages: currentMessages,
+                ...(alexTools.length > 0 ? { tools: alexTools } : {}),
+              });
+
+              for await (const event of apiStream) {
+                if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+                  send({ type: "text", text: event.delta.text });
+                }
               }
+
+              const finalMsg = await apiStream.finalMessage();
+              if (finalMsg.stop_reason !== "tool_use") break;
+
+              const toolUses = finalMsg.content.filter(
+                (b): b is Anthropic.ToolUseBlock => b.type === "tool_use"
+              );
+              currentMessages.push({ role: "assistant", content: finalMsg.content });
+
+              const toolResults: Anthropic.ToolResultBlockParam[] = [];
+              for (const tu of toolUses) {
+                send({ type: "tool_running", tool: tu.name, label: TOOL_LABELS[tu.name] ?? tu.name });
+                const result = await executeAgentTool(tu.name, tu.input as Record<string, unknown>);
+                toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: result });
+              }
+
+              currentMessages.push({ role: "user", content: toolResults });
             }
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "done" })}\n\n`));
+
+            send({ type: "done" });
             controller.close();
           } catch {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "error" })}\n\n`));
+            send({ type: "error" });
             controller.close();
           }
         },
@@ -128,7 +161,7 @@ export async function POST(req: NextRequest) {
           const clarifyStream = anthropic.messages.stream({
             model: "claude-sonnet-4-6",
             max_tokens: 512,
-            system: CLARIFICATION_SYSTEM + "\n\n" + (SYSTEM_PROMPTS.alex.split("Your two modes:")[1] ?? ""),
+            system: CLARIFICATION_SYSTEM + "\n\n" + (SYSTEM_PROMPTS.alex.split("Your two modes:")[1] ?? "") + knowledgeSection,
             messages: [...historyMessages, { role: "user", content: message }],
           });
 
@@ -174,23 +207,21 @@ export async function POST(req: NextRequest) {
           const agentPromises = BOARDROOM_AGENTS.map(async (agentKey) => {
             send({ type: "status", text: `Waiting for ${capitalize(agentKey)}...` });
 
-            const agentBrief = `${SYSTEM_PROMPTS[agentKey]}
+            const agentBrief = `${SYSTEM_PROMPTS[agentKey]}${knowledgeSection}
 
 Alex has briefed the team on this task: "${taskSummary}"
 
 Provide your specialist perspective. Be specific, actionable, and concise. Stay in your lane. This will be included in a final synthesis document.`;
 
-            const response = await anthropic.messages.create({
-              model: "claude-sonnet-4-6",
-              max_tokens: 1024,
-              system: agentBrief,
-              messages: [
-                ...historyMessages,
-                { role: "user", content: `Task brief from Alex: ${taskSummary}` },
-              ],
-            });
+            const tools = AGENT_TOOLS[agentKey] ?? [];
+            const content = await callAgentWithTools(
+              agentBrief,
+              [...historyMessages, { role: "user", content: `Task brief from Alex: ${taskSummary}` }],
+              tools,
+              anthropic,
+              1024
+            );
 
-            const content = response.content[0]?.type === "text" ? response.content[0].text : "";
             agentResponses[agentKey] = content;
             send({ type: "agent_done", agentKey, name: capitalize(agentKey) });
           });
@@ -249,7 +280,7 @@ Keep each section tight. No fluff.`;
           const synthesisResponse = await anthropic.messages.create({
             model: "claude-sonnet-4-6",
             max_tokens: 2048,
-            system: SYSTEM_PROMPTS.alex,
+            system: SYSTEM_PROMPTS.alex + knowledgeSection,
             messages: [{ role: "user", content: synthesisPrompt }],
           });
 
