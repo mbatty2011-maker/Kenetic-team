@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
           const send = (data: object) =>
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
           try {
-            let currentMessages: Anthropic.MessageParam[] = [
+            const currentMessages: Anthropic.MessageParam[] = [
               ...historyMessages,
               { role: "user", content: message },
             ];

@@ -3,7 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { SYSTEM_PROMPTS, type AgentKey } from "@/lib/agents";
-import { TASK_AGENT_TOOLS, executeAgentTool, TOOL_LABELS, SSH_CONFIRMATION_TOKEN } from "@/lib/agent-tools";
+import { TASK_AGENT_TOOLS, executeAgentTool, TOOL_LABELS } from "@/lib/agent-tools";
 import { readKnowledgeBase } from "@/lib/tools/knowledge";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
       try {
         send({ type: "task_id", id: task.id });
 
-        let messages: Anthropic.MessageParam[] = [
+        const messages: Anthropic.MessageParam[] = [
           { role: "user", content: taskDescription },
         ];
 

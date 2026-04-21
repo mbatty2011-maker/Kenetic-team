@@ -19,15 +19,6 @@ interface ConfirmSSH {
   reason?: string;
 }
 
-const STEP_ICONS: Record<string, string> = {
-  thinking:         "⏳",
-  reasoning:        "💭",
-  tool_call:        "⚡",
-  tool_result:      "✅",
-  confirm_required: "⚠️",
-  done:             "🎉",
-  error:            "❌",
-};
 
 const TOOL_ICONS: Record<string, string> = {
   web_search:               "🔍",
@@ -46,7 +37,6 @@ export default function NewTaskModal({ onClose }: { onClose: () => void }) {
   const [taskDescription, setTaskDescription] = useState("");
   const [phase, setPhase] = useState<"form" | "running" | "done" | "error">("form");
   const [steps, setSteps] = useState<TaskStep[]>([]);
-  const [result, setResult] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [confirmSSH, setConfirmSSH] = useState<ConfirmSSH | null>(null);
   const stepsEndRef = useRef<HTMLDivElement>(null);
@@ -64,7 +54,6 @@ export default function NewTaskModal({ onClose }: { onClose: () => void }) {
     if (!taskDescription.trim()) return;
     setPhase("running");
     setSteps([]);
-    setResult("");
     setErrorMsg("");
 
     try {
@@ -108,7 +97,6 @@ export default function NewTaskModal({ onClose }: { onClose: () => void }) {
     if (event.type === "step") {
       setSteps((prev) => [...prev, event.data as TaskStep]);
     } else if (event.type === "complete") {
-      setResult(event.result as string);
       setPhase("done");
     } else if (event.type === "error") {
       setErrorMsg(event.message as string);

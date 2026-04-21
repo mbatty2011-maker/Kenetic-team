@@ -5,7 +5,6 @@ import { createSpreadsheet, readSpreadsheet } from "./tools/sheets";
 import { createDocument } from "./tools/gdocs";
 import { sendEmail, draftEmail } from "./tools/email";
 import { appendToKnowledgeBase } from "./tools/knowledge";
-import { runSSHCommand } from "./tools/ssh";
 
 // ─── Tool definitions ────────────────────────────────────────────────────────
 
@@ -274,7 +273,7 @@ export async function callAgentWithTools(
   anthropic: Anthropic,
   maxTokens = 1024
 ): Promise<string> {
-  let currentMessages = [...messages];
+  const currentMessages = [...messages];
 
   while (true) {
     const response = await anthropic.messages.create({

@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
       try {
         if (didSearch) send({ type: "searching" });
 
-        let currentMessages = [...initialMessages];
+        const currentMessages = [...initialMessages];
 
         // Agentic loop — handles tool use transparently
         while (true) {

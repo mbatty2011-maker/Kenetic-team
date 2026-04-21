@@ -3,7 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { SYSTEM_PROMPTS } from "@/lib/agents";
-import { TASK_AGENT_TOOLS, executeAgentTool, TOOL_LABELS, SSH_CONFIRMATION_TOKEN } from "@/lib/agent-tools";
+import { TASK_AGENT_TOOLS, executeAgentTool, TOOL_LABELS } from "@/lib/agent-tools";
 import { readKnowledgeBase } from "@/lib/tools/knowledge";
 import { runSSHCommand } from "@/lib/tools/ssh";
 import type { TaskStep } from "@/app/api/task/route";
@@ -95,7 +95,7 @@ export async function POST(
         await addStep({ type: "tool_result", label: "SSH result", tool: "run_ssh_command", text: sshResult.slice(0, 300) });
 
         // Rebuild messages from snapshot
-        let messages: Anthropic.MessageParam[] = JSON.parse(messagesJSON);
+        const messages: Anthropic.MessageParam[] = JSON.parse(messagesJSON);
         messages.push({
           role: "user",
           content: [{ type: "tool_result", tool_use_id, content: sshResult }],
