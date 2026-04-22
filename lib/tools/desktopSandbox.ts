@@ -5,7 +5,7 @@ export type Desktop = InstanceType<typeof Sandbox>;
 export async function createDesktop(): Promise<{ desktop: Desktop; streamUrl: string }> {
   const desktop = await Sandbox.create({ apiKey: process.env.E2B_API_KEY });
   await desktop.stream.start();
-  const streamUrl = desktop.stream.getUrl({ autoConnect: true, viewOnly: false, resize: "scale" });
+  const streamUrl = desktop.stream.getUrl({ autoConnect: true, viewOnly: true, resize: "scale" });
   return { desktop, streamUrl };
 }
 

@@ -7,7 +7,25 @@ import { createDesktop, takeScreenshot, executeComputerAction } from "@/lib/tool
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-const MAX_ITERATIONS = 30;
+const MAX_ITERATIONS = 15;
+
+function isSafeUrl(raw: string): boolean {
+  let url: URL;
+  try { url = new URL(raw); } catch { return false; }
+  if (!["http:", "https:"].includes(url.protocol)) return false;
+  const host = url.hostname.toLowerCase();
+  const blocked = [
+    /^localhost$/,
+    /^127\./,
+    /^10\./,
+    /^172\.(1[6-9]|2\d|3[01])\./,
+    /^192\.168\./,
+    /^169\.254\./,
+    /^0\.0\.0\.0$/,
+    /^::1$/,
+  ];
+  return !blocked.some((r) => r.test(host));
+}
 
 type AgentAction =
   | { action: "click"; x: number; y: number; reason: string }
@@ -38,7 +56,15 @@ Rules:
 - Take a screenshot first to understand the current state
 - Verify each action with a screenshot before the next
 - Use "open" to navigate to URLs directly
-- Use "done" when the task is fully complete`;
+- Use "done" when the task is fully complete
+
+RESTRICTIONS (never violate these):
+- Only visit URLs directly relevant to the user's task
+- Never access internal networks, localhost, cloud metadata endpoints (169.254.x.x), admin panels, banking sites, email accounts, or authentication pages
+- Never extract, describe, or screenshot passwords, API keys, tokens, or personal financial data
+- Never download or upload files
+- If a site asks for login credentials, stop immediately and use {"action":"done","result":"Stopped — site requires login credentials"} instead
+- Only perform the specific task requested — nothing beyond it`;
 
 export async function POST(request: NextRequest) {
   const supabase = createServerClient(
@@ -57,6 +83,7 @@ export async function POST(request: NextRequest) {
 
   const { task } = await request.json();
   if (!task?.trim()) return NextResponse.json({ error: "Task required" }, { status: 400 });
+  if (task.length > 2000) return NextResponse.json({ error: "Task too long (max 2000 characters)" }, { status: 400 });
 
   const encoder = new TextEncoder();
 
@@ -129,6 +156,13 @@ export async function POST(request: NextRequest) {
           let nextShot: string;
 
           if (parsed.action === "open") {
+            if (!isSafeUrl(parsed.url)) {
+              history.push({
+                role: "user",
+                content: [{ type: "text", text: "That URL is blocked. Only public http/https URLs are allowed. Use done to finish." }],
+              });
+              continue;
+            }
             await desktop.open(parsed.url);
             await desktop.wait(2000);
             nextShot = await takeScreenshot(desktop);

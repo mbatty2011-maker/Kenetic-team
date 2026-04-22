@@ -246,8 +246,8 @@ export default function ComputerUseClient() {
             <iframe
               src={streamUrl}
               className="w-full h-full border-0"
-              allow="clipboard-read; clipboard-write"
-              sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+              allow=""
+              sandbox="allow-scripts allow-forms"
               title="Live desktop"
             />
           </div>
