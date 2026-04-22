@@ -369,28 +369,6 @@ export default function Sidebar({
           </Link>
         </div>
 
-        {/* Computer Use */}
-        <div className="mt-1">
-          <Link
-            href="/chat/computer"
-            onClick={onClose}
-            className={`flex items-center gap-2.5 px-2 py-2 rounded-apple-md transition-colors duration-200 ${
-              currentAgent === "computer" ? "bg-white/12" : "hover:bg-white/6"
-            }`}
-          >
-            <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.6" strokeOpacity="0.7">
-                <rect x="2" y="3" width="20" height="14" rx="2" />
-                <path d="M8 21h8M12 17v4" strokeLinecap="round" />
-              </svg>
-            </div>
-            <div>
-              <div className="text-white text-sm font-medium leading-none">Computer</div>
-              <div className="text-white/40 text-xs mt-0.5">Live browser control</div>
-            </div>
-          </Link>
-        </div>
-
         {/* Boardroom */}
         <div className="mt-1">
           <div className="mx-2 border-t border-white/8 mb-2" />

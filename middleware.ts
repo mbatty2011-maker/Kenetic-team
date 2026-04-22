@@ -35,6 +35,13 @@ export async function middleware(request: NextRequest) {
   const publicPaths = ["/login", "/signup", "/auth/callback"];
   const isPublicPath = pathname === "/" || publicPaths.some((p) => pathname.startsWith(p));
 
+  // Computer Use is internal only — redirect anyone who navigates there directly
+  if (user && pathname.startsWith("/chat/computer")) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/chat";
+    return NextResponse.redirect(url);
+  }
+
   if (!user && !isPublicPath) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
