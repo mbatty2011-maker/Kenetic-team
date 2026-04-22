@@ -141,7 +141,7 @@ export default function OnboardingClient({ userName }: { userName: string }) {
             {userName ? `Welcome, ${userName.split(" ")[0]}` : "Welcome"}
           </h1>
           <p className="text-sm text-apple-gray-500 mt-1">
-            Let's introduce you to your team
+            Let&apos;s introduce you to your team
           </p>
         </div>
 

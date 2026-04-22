@@ -171,7 +171,7 @@ export default function SettingsPage() {
             Agent Memory
           </h2>
           <p className="text-xs text-apple-gray-400 px-1 mb-2">
-            Everything here is injected into every agent's context on every message. Use it to describe your company, product, goals, strategy — anything the agents should always know.
+            Everything here is injected into every agent&apos;s context on every message. Use it to describe your company, product, goals, strategy — anything the agents should always know.
           </p>
           <div className="bg-white rounded-apple-xl shadow-apple-sm overflow-hidden">
             <div className="px-4 py-3">

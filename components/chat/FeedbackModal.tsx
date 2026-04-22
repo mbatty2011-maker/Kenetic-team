@@ -54,7 +54,7 @@ export default function FeedbackModal({ onClose }: { onClose: () => void }) {
               </svg>
             </div>
             <p className="text-apple-gray-950 font-semibold">Feedback sent!</p>
-            <p className="text-apple-gray-500 text-sm">We'll look into it shortly.</p>
+            <p className="text-apple-gray-500 text-sm">We&apos;ll look into it shortly.</p>
             <button
               onClick={onClose}
               className="mt-2 px-5 py-2 bg-apple-gray-950 text-white text-sm font-semibold rounded-apple-lg hover:bg-apple-gray-800 transition-colors"

@@ -6,7 +6,6 @@ import { createDocument } from "./tools/gdocs";
 import { sendEmail, draftEmail } from "./tools/email";
 import { appendToKnowledgeBase } from "./tools/knowledge";
 import { executeCode } from "./tools/codeExecution";
-import { writeFile } from "./tools/fileSystem";
 
 // ─── Tool definitions ────────────────────────────────────────────────────────
 
@@ -156,64 +155,6 @@ const EXECUTE_CODE: Anthropic.Tool = {
   },
 };
 
-const WRITE_FILE: Anthropic.Tool = {
-  name: "write_file",
-  description:
-    "Write content to a file in the project directory. Use this to create pages, components, styles, or any code file. Path is relative to the project root (e.g. 'app/landing/page.tsx'). Creates any missing directories automatically.",
-  input_schema: {
-    type: "object" as const,
-    properties: {
-      path: { type: "string", description: "Relative file path from project root, e.g. 'app/landing/page.tsx'" },
-      content: { type: "string", description: "Full file content to write" },
-    },
-    required: ["path", "content"],
-  },
-};
-
-// Computer Use tools — require a running container (see COMPUTER_USE_SETUP.md)
-const COMPUTER_USE_COMPUTER: Anthropic.Tool = {
-  name: "computer",
-  description: "Control a computer with mouse/keyboard and take screenshots. Requires a running container with a display — see COMPUTER_USE_SETUP.md.",
-  input_schema: {
-    type: "object" as const,
-    properties: {
-      action: { type: "string", description: "The action to perform (screenshot, click, type, etc.)" },
-      coordinate: { type: "array", items: { type: "number" }, description: "[x, y] coordinate for click actions" },
-      text: { type: "string", description: "Text to type" },
-    },
-    required: ["action"],
-  },
-};
-
-const COMPUTER_USE_TEXT_EDITOR: Anthropic.Tool = {
-  name: "text_editor",
-  description: "View and edit files on the computer. Requires a running container — see COMPUTER_USE_SETUP.md.",
-  input_schema: {
-    type: "object" as const,
-    properties: {
-      command: { type: "string", enum: ["view", "create", "str_replace", "insert", "undo_edit"] },
-      path: { type: "string" },
-      file_text: { type: "string" },
-      old_str: { type: "string" },
-      new_str: { type: "string" },
-      insert_line: { type: "number" },
-      new_file: { type: "string" },
-    },
-    required: ["command", "path"],
-  },
-};
-
-const COMPUTER_USE_BASH: Anthropic.Tool = {
-  name: "bash",
-  description: "Run bash commands on the computer. Requires a running container — see COMPUTER_USE_SETUP.md.",
-  input_schema: {
-    type: "object" as const,
-    properties: {
-      command: { type: "string", description: "The bash command to run" },
-      restart: { type: "boolean", description: "Restart the shell session" },
-    },
-  },
-};
 
 const RUN_SSH: Anthropic.Tool = {
   name: "run_ssh_command",
@@ -233,7 +174,6 @@ const RUN_SSH: Anthropic.Tool = {
 
 const ALL_TOOLS = [CREATE_SPREADSHEET, READ_SPREADSHEET, CREATE_DOCUMENT, WEB_SEARCH, SEND_EMAIL, DRAFT_EMAIL, APPEND_TO_KB];
 
-const KAI_COMPUTER_USE = [COMPUTER_USE_COMPUTER, COMPUTER_USE_TEXT_EDITOR, COMPUTER_USE_BASH];
 
 // AGENT_TOOLS: used in /api/chat — all agents get all tools; Kai also gets propose_ssh + execute_code + computer use
 export const AGENT_TOOLS: Partial<Record<AgentKey, Anthropic.Tool[]>> = {
@@ -266,10 +206,6 @@ export const TOOL_LABELS: Record<string, string> = {
   propose_ssh_command:      "Proposing Pi command...",
   run_ssh_command:          "Running command on Pi...",
   execute_code:             "Running code...",
-  write_file:               "Writing file...",
-  computer:                 "Using computer...",
-  text_editor:              "Editing file...",
-  bash:                     "Running shell command...",
 };
 
 // ─── Tool execution ──────────────────────────────────────────────────────────
@@ -346,13 +282,6 @@ export async function executeAgentTool(
         throw new Error("run_ssh_command must be intercepted by the task route before reaching executeAgentTool");
       }
 
-      case "write_file": {
-        const filePath = input.path as string;
-        const content = input.content as string;
-        const written = await writeFile(filePath, content);
-        return `File written: ${written}`;
-      }
-
       case "execute_code": {
         const result = await executeCode(
           input.code as string,
@@ -364,12 +293,6 @@ export async function executeAgentTool(
         if (result.results) parts.push(`output:\n${result.results}`);
         if (result.error) parts.push(`error:\n${result.error}`);
         return parts.length > 0 ? parts.join("\n\n") : "(no output)";
-      }
-
-      case "computer":
-      case "text_editor":
-      case "bash": {
-        return `Computer Use requires a running container. See COMPUTER_USE_SETUP.md for setup instructions.`;
       }
 
       default:
