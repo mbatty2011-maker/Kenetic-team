@@ -126,6 +126,7 @@ export default function OnboardingClient({ userName }: { userName: string }) {
 
       router.push("/chat");
     } catch (err) {
+      console.error("Onboarding save error:", err);
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
       setSaving(false);
     }

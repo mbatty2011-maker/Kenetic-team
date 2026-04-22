@@ -82,7 +82,8 @@ export default function SettingsPage() {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } else {
-      showToast("Save failed — check Supabase schema");
+      console.error("Profile save error:", error);
+      showToast(`Save failed: ${error.message}`);
     }
   }
 

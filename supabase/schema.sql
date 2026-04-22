@@ -23,8 +23,8 @@ create table if not exists messages (
 create table if not exists profiles (
   id uuid primary key references auth.users on delete cascade,
   full_name text,
-  company_name text default 'LineSkip',
-  role_title text default 'Founder & CEO',
+  company_name text,
+  role_title text,
   avatar_url text,
   user_context text,
   onboarding_complete boolean default false,
@@ -72,7 +72,8 @@ create policy "Users can manage their own messages"
 
 create policy "Users can manage their own profile"
   on profiles for all
-  using (auth.uid() = id);
+  using (auth.uid() = id)
+  with check (auth.uid() = id);
 
 create policy "Users can read own knowledge base"
   on knowledge_base for select

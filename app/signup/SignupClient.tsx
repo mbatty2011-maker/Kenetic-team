@@ -14,6 +14,20 @@ export default function SignupPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [verified, setVerified] = useState(false);
+  const [resendStatus, setResendStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+
+  async function handleResend() {
+    setResendStatus("sending");
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email,
+      options: {
+        emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin}/auth/callback?next=/onboarding`,
+      },
+    });
+    setResendStatus(error ? "error" : "sent");
+    if (!error) setTimeout(() => setResendStatus("idle"), 5000);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -58,9 +72,16 @@ export default function SignupPage() {
               We sent a verification link to
             </p>
             <p className="text-sm font-medium text-apple-gray-950 mb-4">{email}</p>
-            <p className="text-xs text-apple-gray-400">
+            <p className="text-xs text-apple-gray-400 mb-5">
               Click the link in the email to activate your account, then come back here to sign in.
             </p>
+            <button
+              onClick={handleResend}
+              disabled={resendStatus === "sending" || resendStatus === "sent"}
+              className="text-sm text-apple-gray-500 hover:text-apple-gray-950 disabled:opacity-50 transition-colors underline underline-offset-2"
+            >
+              {resendStatus === "sending" ? "Sending…" : resendStatus === "sent" ? "Email resent ✓" : resendStatus === "error" ? "Failed — try again" : "Didn't get it? Resend"}
+            </button>
           </div>
           <p className="text-center text-sm text-apple-gray-500 mt-6">
             Already verified?{" "}
