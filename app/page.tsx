@@ -99,6 +99,63 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Pricing */}
+      <section className="py-24 px-6 bg-[#F9F9F9] border-y border-black/5">
+        <div className="max-w-4xl mx-auto">
+          <p className="text-center text-xs font-semibold uppercase tracking-widest text-[#1C1C1E]/40 mb-3">Pricing</p>
+          <h2 className="text-3xl sm:text-4xl font-bold text-center tracking-tight mb-12">Simple, honest pricing</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-2xl mx-auto">
+            {/* Free */}
+            <div className="bg-white border border-black/8 rounded-2xl p-8">
+              <div className="text-xs font-semibold uppercase tracking-widest text-[#1C1C1E]/40 mb-2">Free</div>
+              <div className="text-4xl font-bold tracking-tight mb-1">$0</div>
+              <p className="text-sm text-[#1C1C1E]/50 mb-6">Forever. No card required.</p>
+              <ul className="space-y-3 mb-8 text-sm text-[#1C1C1E]/70">
+                {[
+                  "All 5 AI executives",
+                  "The Boardroom",
+                  "Google Docs & Sheets",
+                  "Gmail drafts",
+                  "Web search",
+                  "100 messages / day",
+                ].map((f) => (
+                  <li key={f} className="flex items-center gap-2">
+                    <span className="text-[#1C1C1E] font-bold text-xs">✓</span> {f}
+                  </li>
+                ))}
+              </ul>
+              <Link href="/signup" className="block text-center bg-[#1C1C1E] text-white text-sm font-semibold py-3 rounded-full hover:bg-black transition-colors">
+                Get started free
+              </Link>
+            </div>
+            {/* Pro */}
+            <div className="bg-[#1C1C1E] border border-black/8 rounded-2xl p-8 relative overflow-hidden">
+              <div className="absolute top-4 right-4 bg-white/10 text-white text-xs font-semibold px-2.5 py-1 rounded-full">Coming soon</div>
+              <div className="text-xs font-semibold uppercase tracking-widest text-white/40 mb-2">Pro</div>
+              <div className="text-4xl font-bold tracking-tight text-white mb-1">$49<span className="text-2xl text-white/50">/mo</span></div>
+              <p className="text-sm text-white/50 mb-6">For teams moving fast.</p>
+              <ul className="space-y-3 mb-8 text-sm text-white/70">
+                {[
+                  "Everything in Free",
+                  "Unlimited messages",
+                  "Autonomous task runner",
+                  "Computer Use (live browser)",
+                  "SSH / server access for Kai",
+                  "Priority support",
+                ].map((f) => (
+                  <li key={f} className="flex items-center gap-2">
+                    <span className="text-white font-bold text-xs">✓</span> {f}
+                  </li>
+                ))}
+              </ul>
+              <button disabled className="w-full text-center bg-white/10 text-white/40 text-sm font-semibold py-3 rounded-full cursor-not-allowed">
+                Notify me
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* CTA */}
       <section className="py-28 px-6 bg-[#1C1C1E] text-white text-center">
         <Image src="/knetc-logo.png" alt="knetc team" width={100} height={28} className="h-7 w-auto mx-auto mb-10 invert" />

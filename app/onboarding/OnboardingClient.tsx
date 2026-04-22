@@ -120,6 +120,10 @@ export default function OnboardingClient({ userName }: { userName: string }) {
       });
 
       if (upsertError) throw upsertError;
+
+      // Fire welcome email — non-blocking
+      fetch("/api/welcome", { method: "POST" }).catch(() => {});
+
       router.push("/chat");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");

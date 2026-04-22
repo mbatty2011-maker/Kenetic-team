@@ -2,10 +2,14 @@
 
 import { useState, useRef, useEffect } from "react";
 
+const DISCLOSURE_KEY = "computer_use_disclosed";
+
 type ActionEvent = {
-  type: "status" | "stream_ready" | "action" | "thinking" | "done" | "error";
+  type: "status" | "stream_ready" | "session" | "action" | "thinking" | "done" | "error";
   message?: string;
   streamUrl?: string;
+  sessionId?: string;
+  sandboxId?: string;
   action?: string;
   coordinate?: [number, number];
   text?: string;
@@ -15,15 +19,39 @@ type ActionEvent = {
 function actionLabel(event: ActionEvent): string {
   switch (event.action) {
     case "screenshot":    return "Taking screenshot";
-    case "left_click":    return `Click at (${event.coordinate?.join(", ")})`;
-    case "double_click":  return `Double-click at (${event.coordinate?.join(", ")})`;
-    case "right_click":   return `Right-click at (${event.coordinate?.join(", ")})`;
-    case "type":          return `Type: "${event.text}"`;
-    case "key":           return `Key: ${event.text}`;
-    case "scroll":        return `Scroll at (${event.coordinate?.join(", ")})`;
-    case "mouse_move":    return `Move mouse to (${event.coordinate?.join(", ")})`;
-    default:              return event.action ?? "Action";
+    case "click":        return `Click at (${event.coordinate?.join(", ")})`;
+    case "double_click": return `Double-click at (${event.coordinate?.join(", ")})`;
+    case "right_click":  return `Right-click at (${event.coordinate?.join(", ")})`;
+    case "type":         return `Type: "${event.text}"`;
+    case "key":          return `Key: ${event.text}`;
+    case "scroll":       return `Scroll at (${event.coordinate?.join(", ")})`;
+    case "open":         return `Open: ${(event as unknown as { url: string }).url ?? ""}`;
+    default:             return event.action ?? "Action";
   }
+}
+
+function DisclosureModal({ onAccept }: { onAccept: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+        <h2 className="text-base font-semibold text-[#1C1C1E] mb-2">Before you continue</h2>
+        <p className="text-sm text-[#1C1C1E]/60 leading-relaxed mb-4">
+          Computer Use lets an AI agent control a browser on your behalf. Please note:
+        </p>
+        <ul className="text-sm text-[#1C1C1E]/70 space-y-2 mb-5 list-none">
+          <li className="flex gap-2"><span className="text-amber-500 flex-shrink-0">⚠</span> Screenshots of the agent&apos;s screen are sent to Anthropic&apos;s API for processing.</li>
+          <li className="flex gap-2"><span className="text-amber-500 flex-shrink-0">⚠</span> The agent takes <strong>real actions</strong> — clicks, form submissions, and navigation are live.</li>
+          <li className="flex gap-2"><span className="text-amber-500 flex-shrink-0">⚠</span> Do not ask the agent to visit pages containing passwords, banking info, or confidential data.</li>
+        </ul>
+        <button
+          onClick={onAccept}
+          className="w-full bg-[#1C1C1E] text-white text-sm font-medium py-2.5 rounded-xl hover:bg-black transition-colors"
+        >
+          I understand — continue
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export default function ComputerUseClient() {
@@ -31,10 +59,16 @@ export default function ComputerUseClient() {
   const [status, setStatus] = useState<"idle" | "running" | "done" | "error">("idle");
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
   const [feed, setFeed] = useState<ActionEvent[]>([]);
+  const [showDisclosure, setShowDisclosure] = useState(false);
   const feedRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
+  const sandboxIdRef = useRef<string | null>(null);
 
   useEffect(() => {
+    if (typeof window !== "undefined" && !localStorage.getItem(DISCLOSURE_KEY)) {
+      setShowDisclosure(true);
+    }
     return () => { abortRef.current?.abort(); };
   }, []);
 
@@ -47,12 +81,19 @@ export default function ComputerUseClient() {
   const appendFeed = (event: ActionEvent) =>
     setFeed((prev) => [...prev, event]);
 
+  function acceptDisclosure() {
+    localStorage.setItem(DISCLOSURE_KEY, "1");
+    setShowDisclosure(false);
+  }
+
   async function run() {
     if (!task.trim() || status === "running") return;
 
     setStatus("running");
     setFeed([]);
     setStreamUrl(null);
+    sessionIdRef.current = null;
+    sandboxIdRef.current = null;
 
     abortRef.current = new AbortController();
 
@@ -83,7 +124,10 @@ export default function ComputerUseClient() {
           try {
             const event: ActionEvent = JSON.parse(line.slice(6));
 
-            if (event.type === "stream_ready" && event.streamUrl) {
+            if (event.type === "session") {
+              if (event.sessionId) sessionIdRef.current = event.sessionId;
+              if (event.sandboxId) sandboxIdRef.current = event.sandboxId;
+            } else if (event.type === "stream_ready" && event.streamUrl) {
               setStreamUrl(event.streamUrl);
             } else if (event.type === "done") {
               setStatus("done");
@@ -107,178 +151,208 @@ export default function ComputerUseClient() {
     setStatus((s) => s === "running" ? "idle" : s);
   }
 
-  function stop() {
+  async function stop() {
     abortRef.current?.abort();
+
+    // Ask server to kill the sandbox
+    const sessionId = sessionIdRef.current;
+    const sandboxId = sandboxIdRef.current;
+    if (sessionId || sandboxId) {
+      try {
+        await fetch("/api/computer-use", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId, sandboxId }),
+        });
+      } catch {}
+    }
+
     setStatus("idle");
   }
 
   return (
-    <div className="flex h-full" style={{ background: "#F5F5F7" }}>
-      {/* Left panel — controls + feed */}
-      <div className="w-[380px] flex-shrink-0 flex flex-col border-r border-black/8 bg-white">
-        {/* Header */}
-        <div className="px-5 pt-5 pb-4 border-b border-black/6">
-          <h1 className="font-semibold text-[#1C1C1E] text-base tracking-tight">Computer Use</h1>
-          <p className="text-xs text-[#1C1C1E]/40 mt-0.5">Watch the AI work in real time</p>
-        </div>
+    <>
+      {showDisclosure && <DisclosureModal onAccept={acceptDisclosure} />}
 
-        {/* Task input */}
-        <div className="px-4 py-4 border-b border-black/6">
-          <textarea
-            value={task}
-            onChange={(e) => setTask(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) run();
-            }}
-            placeholder="Describe what you want the agent to do..."
-            rows={4}
-            disabled={status === "running"}
-            className="w-full text-sm text-[#1C1C1E] bg-[#F5F5F7] border border-black/8 rounded-xl px-3 py-2.5 resize-none outline-none focus:border-black/20 placeholder:text-[#1C1C1E]/30 disabled:opacity-50"
-          />
-          <div className="flex gap-2 mt-2">
-            {status === "running" ? (
-              <button
-                onClick={stop}
-                className="flex-1 bg-red-500 text-white text-sm font-medium py-2.5 rounded-xl hover:bg-red-600 transition-colors"
-              >
-                Stop
-              </button>
-            ) : (
-              <button
-                onClick={run}
-                disabled={!task.trim()}
-                className="flex-1 bg-[#1C1C1E] text-white text-sm font-medium py-2.5 rounded-xl hover:bg-black transition-colors disabled:opacity-30"
-              >
-                Run  <span className="text-white/40 text-xs ml-1">⌘↵</span>
-              </button>
+      <div className="flex h-full" style={{ background: "#F5F5F7" }}>
+        {/* Left panel — controls + feed */}
+        <div className="w-[380px] flex-shrink-0 flex flex-col border-r border-black/8 bg-white">
+          {/* Header */}
+          <div className="px-5 pt-5 pb-4 border-b border-black/6">
+            <h1 className="font-semibold text-[#1C1C1E] text-base tracking-tight">Computer Use</h1>
+            <p className="text-xs text-[#1C1C1E]/40 mt-0.5">Watch the AI work in real time</p>
+          </div>
+
+          {/* Vercel Pro notice */}
+          <div className="px-4 py-2.5 bg-amber-50 border-b border-amber-100 flex items-start gap-2">
+            <span className="text-amber-500 text-xs mt-0.5 flex-shrink-0">⚠</span>
+            <p className="text-xs text-amber-700 leading-relaxed">
+              Computer Use requires <strong>Vercel Pro</strong>. Sessions may be cut short at 60 seconds on the Hobby plan.
+            </p>
+          </div>
+
+          {/* Task input */}
+          <div className="px-4 py-4 border-b border-black/6">
+            <textarea
+              value={task}
+              onChange={(e) => setTask(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) run();
+              }}
+              placeholder="Describe what you want the agent to do..."
+              rows={4}
+              disabled={status === "running"}
+              className="w-full text-sm text-[#1C1C1E] bg-[#F5F5F7] border border-black/8 rounded-xl px-3 py-2.5 resize-none outline-none focus:border-black/20 placeholder:text-[#1C1C1E]/30 disabled:opacity-50"
+            />
+            <div className="flex gap-2 mt-2">
+              {status === "running" ? (
+                <button
+                  onClick={stop}
+                  className="flex-1 bg-red-500 text-white text-sm font-medium py-2.5 rounded-xl hover:bg-red-600 transition-colors"
+                >
+                  Stop
+                </button>
+              ) : (
+                <button
+                  onClick={run}
+                  disabled={!task.trim()}
+                  className="flex-1 bg-[#1C1C1E] text-white text-sm font-medium py-2.5 rounded-xl hover:bg-black transition-colors disabled:opacity-30"
+                >
+                  Run  <span className="text-white/40 text-xs ml-1">⌘↵</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Action feed */}
+          <div ref={feedRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-1.5 dark-scrollbar">
+            {feed.length === 0 && status === "idle" && (
+              <p className="text-xs text-[#1C1C1E]/30 text-center pt-8">
+                Enter a task and click Run to start
+              </p>
+            )}
+
+            {feed.map((event, i) => {
+              if (event.type === "status") {
+                return (
+                  <div key={i} className="flex items-center gap-2 py-1">
+                    <div className="w-1.5 h-1.5 rounded-full bg-[#1C1C1E]/20 flex-shrink-0" />
+                    <span className="text-xs text-[#1C1C1E]/40">{event.message}</span>
+                  </div>
+                );
+              }
+
+              if (event.type === "stream_ready") {
+                return (
+                  <div key={i} className="flex items-center gap-2 py-1">
+                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" />
+                    <span className="text-xs text-green-600 font-medium">Desktop connected</span>
+                  </div>
+                );
+              }
+
+              if (event.type === "thinking") {
+                return (
+                  <div key={i} className="bg-[#F5F5F7] rounded-lg px-3 py-2 text-xs text-[#1C1C1E]/60 leading-relaxed border-l-2 border-[#1C1C1E]/10">
+                    {event.text}
+                  </div>
+                );
+              }
+
+              if (event.type === "action") {
+                return (
+                  <div key={i} className="flex items-center gap-2 py-1">
+                    <span className="text-sm flex-shrink-0">
+                      {event.action === "screenshot" ? "📷" :
+                       event.action === "click" || event.action === "double_click" ? "🖱️" :
+                       event.action === "type" ? "⌨️" :
+                       event.action === "key" ? "⌨️" :
+                       event.action === "scroll" ? "↕️" :
+                       event.action === "open" ? "🌐" : "⚡"}
+                    </span>
+                    <span className="text-xs text-[#1C1C1E]/70 truncate">{actionLabel(event)}</span>
+                  </div>
+                );
+              }
+
+              if (event.type === "done") {
+                return (
+                  <div key={i} className="bg-green-50 border border-green-100 rounded-xl px-3 py-3 mt-2">
+                    <div className="text-xs font-semibold text-green-700 mb-1">✓ Complete</div>
+                    <p className="text-xs text-green-600 leading-relaxed">{event.result}</p>
+                  </div>
+                );
+              }
+
+              if (event.type === "error") {
+                return (
+                  <div key={i} className="bg-red-50 border border-red-100 rounded-xl px-3 py-3 mt-2">
+                    <div className="text-xs font-semibold text-red-600 mb-1">Error</div>
+                    <p className="text-xs text-red-500 leading-relaxed">{event.message}</p>
+                  </div>
+                );
+              }
+
+              return null;
+            })}
+
+            {status === "running" && (
+              <div className="flex items-center gap-2 py-1 mt-1">
+                <div className="flex gap-0.5">
+                  {[0, 1, 2].map((i) => (
+                    <div
+                      key={i}
+                      className="w-1.5 h-1.5 rounded-full bg-[#1C1C1E]/30 animate-bounce"
+                      style={{ animationDelay: `${i * 150}ms` }}
+                    />
+                  ))}
+                </div>
+                <span className="text-xs text-[#1C1C1E]/40">Agent working...</span>
+              </div>
             )}
           </div>
         </div>
 
-        {/* Action feed */}
-        <div ref={feedRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-1.5 dark-scrollbar">
-          {feed.length === 0 && status === "idle" && (
-            <p className="text-xs text-[#1C1C1E]/30 text-center pt-8">
-              Enter a task and click Run to start
-            </p>
-          )}
-
-          {feed.map((event, i) => {
-            if (event.type === "status") {
-              return (
-                <div key={i} className="flex items-center gap-2 py-1">
-                  <div className="w-1.5 h-1.5 rounded-full bg-[#1C1C1E]/20 flex-shrink-0" />
-                  <span className="text-xs text-[#1C1C1E]/40">{event.message}</span>
-                </div>
-              );
-            }
-
-            if (event.type === "stream_ready") {
-              return (
-                <div key={i} className="flex items-center gap-2 py-1">
-                  <div className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" />
-                  <span className="text-xs text-green-600 font-medium">Desktop connected</span>
-                </div>
-              );
-            }
-
-            if (event.type === "thinking") {
-              return (
-                <div key={i} className="bg-[#F5F5F7] rounded-lg px-3 py-2 text-xs text-[#1C1C1E]/60 leading-relaxed border-l-2 border-[#1C1C1E]/10">
-                  {event.text}
-                </div>
-              );
-            }
-
-            if (event.type === "action") {
-              return (
-                <div key={i} className="flex items-center gap-2 py-1">
-                  <span className="text-sm flex-shrink-0">
-                    {event.action === "screenshot" ? "📷" :
-                     event.action === "left_click" || event.action === "double_click" ? "🖱️" :
-                     event.action === "type" ? "⌨️" :
-                     event.action === "key" ? "⌨️" :
-                     event.action === "scroll" ? "↕️" : "⚡"}
-                  </span>
-                  <span className="text-xs text-[#1C1C1E]/70 truncate">{actionLabel(event)}</span>
-                </div>
-              );
-            }
-
-            if (event.type === "done") {
-              return (
-                <div key={i} className="bg-green-50 border border-green-100 rounded-xl px-3 py-3 mt-2">
-                  <div className="text-xs font-semibold text-green-700 mb-1">✓ Complete</div>
-                  <p className="text-xs text-green-600 leading-relaxed">{event.result}</p>
-                </div>
-              );
-            }
-
-            if (event.type === "error") {
-              return (
-                <div key={i} className="bg-red-50 border border-red-100 rounded-xl px-3 py-3 mt-2">
-                  <div className="text-xs font-semibold text-red-600 mb-1">Error</div>
-                  <p className="text-xs text-red-500 leading-relaxed">{event.message}</p>
-                </div>
-              );
-            }
-
-            return null;
-          })}
-
-          {status === "running" && (
-            <div className="flex items-center gap-2 py-1 mt-1">
-              <div className="flex gap-0.5">
-                {[0, 1, 2].map((i) => (
-                  <div
-                    key={i}
-                    className="w-1.5 h-1.5 rounded-full bg-[#1C1C1E]/30 animate-bounce"
-                    style={{ animationDelay: `${i * 150}ms` }}
-                  />
-                ))}
+        {/* Right panel — live desktop stream */}
+        <div className="flex-1 flex flex-col items-center justify-center bg-[#F5F5F7] p-6">
+          {streamUrl ? (
+            <div className="relative w-full h-full rounded-2xl overflow-hidden shadow-2xl border border-black/8 bg-black">
+              <iframe
+                src={streamUrl}
+                className="w-full h-full border-0"
+                allow=""
+                sandbox="allow-scripts allow-forms"
+                title="Live desktop"
+              />
+              <div className="absolute top-3 right-3 bg-black/50 text-white text-xs px-2.5 py-1 rounded-full pointer-events-none select-none">
+                View only
               </div>
-              <span className="text-xs text-[#1C1C1E]/40">Agent working...</span>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center gap-4 text-center">
+              {status === "running" ? (
+                <>
+                  <div className="w-12 h-12 rounded-full border-2 border-[#1C1C1E]/10 border-t-[#1C1C1E]/60 animate-spin" />
+                  <p className="text-sm text-[#1C1C1E]/40">Starting desktop environment...</p>
+                </>
+              ) : (
+                <>
+                  <div className="w-16 h-16 rounded-2xl bg-[#1C1C1E]/5 flex items-center justify-center">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-[#1C1C1E]/30">
+                      <rect x="2" y="3" width="20" height="14" rx="2" />
+                      <path d="M8 21h8M12 17v4" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-[#1C1C1E]/50">No active session</p>
+                    <p className="text-xs text-[#1C1C1E]/30 mt-1">Run a task to see the live desktop</p>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
       </div>
-
-      {/* Right panel — live desktop stream */}
-      <div className="flex-1 flex flex-col items-center justify-center bg-[#F5F5F7] p-6">
-        {streamUrl ? (
-          <div className="w-full h-full rounded-2xl overflow-hidden shadow-2xl border border-black/8 bg-black">
-            <iframe
-              src={streamUrl}
-              className="w-full h-full border-0"
-              allow=""
-              sandbox="allow-scripts allow-forms"
-              title="Live desktop"
-            />
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center gap-4 text-center">
-            {status === "running" ? (
-              <>
-                <div className="w-12 h-12 rounded-full border-2 border-[#1C1C1E]/10 border-t-[#1C1C1E]/60 animate-spin" />
-                <p className="text-sm text-[#1C1C1E]/40">Starting desktop environment...</p>
-              </>
-            ) : (
-              <>
-                <div className="w-16 h-16 rounded-2xl bg-[#1C1C1E]/5 flex items-center justify-center">
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-[#1C1C1E]/30">
-                    <rect x="2" y="3" width="20" height="14" rx="2" />
-                    <path d="M8 21h8M12 17v4" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-[#1C1C1E]/50">No active session</p>
-                  <p className="text-xs text-[#1C1C1E]/30 mt-1">Run a task to see the live desktop</p>
-                </div>
-              </>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
+    </>
   );
 }

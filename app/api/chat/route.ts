@@ -9,6 +9,7 @@ import { tavilySearch, formatSearchResults } from "@/lib/tools/search";
 import { readKnowledgeBase } from "@/lib/tools/knowledge";
 import { AGENT_TOOLS, executeAgentTool, TOOL_LABELS } from "@/lib/agent-tools";
 import { getUserContext, buildUserSection } from "@/lib/tools/user-context";
+import { checkDailyLimit } from "@/lib/rate-limit";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
@@ -50,6 +51,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid conversationId" }, { status: 400 });
   if (!SYSTEM_PROMPTS[agentKey]) {
     return NextResponse.json({ error: "Invalid agent" }, { status: 400 });
+  }
+
+  const { allowed, count, limit } = await checkDailyLimit(supabase, user.id);
+  if (!allowed) {
+    return NextResponse.json(
+      { error: `Daily limit reached (${count}/${limit} messages). Resets at midnight.` },
+      { status: 429 }
+    );
   }
 
   const agentTools = AGENT_TOOLS[agentKey] ?? [];

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { User } from "@supabase/supabase-js";
 import Sidebar from "@/components/chat/Sidebar";
 import NewTaskModal from "@/components/chat/NewTaskModal";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 export default function ChatLayoutClient({
   user,
@@ -54,7 +55,7 @@ export default function ChatLayoutClient({
           </button>
         </div>
 
-        {children}
+        <ErrorBoundary>{children}</ErrorBoundary>
       </div>
 
       {/* Task modal rendered at root level — outside the CSS-transformed sidebar container

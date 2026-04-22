@@ -8,6 +8,7 @@ import { SYSTEM_PROMPTS, type AgentKey } from "@/lib/agents";
 import { TASK_AGENT_TOOLS, executeAgentTool, TOOL_LABELS } from "@/lib/agent-tools";
 import { readKnowledgeBase } from "@/lib/tools/knowledge";
 import { getUserContext, buildUserSection } from "@/lib/tools/user-context";
+import { checkDailyLimit } from "@/lib/rate-limit";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
@@ -64,6 +65,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid task description" }, { status: 400 });
   if (!SYSTEM_PROMPTS[agentKey]) {
     return NextResponse.json({ error: "Invalid agent" }, { status: 400 });
+  }
+
+  const { allowed, count, limit } = await checkDailyLimit(supabase, user.id);
+  if (!allowed) {
+    return NextResponse.json(
+      { error: `Daily limit reached (${count}/${limit} messages). Resets at midnight.` },
+      { status: 429 }
+    );
   }
 
   // Create task record
