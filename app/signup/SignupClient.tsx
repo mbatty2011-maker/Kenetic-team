@@ -13,27 +13,67 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [verified, setVerified] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setLoading(true);
 
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: { full_name: fullName },
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=/onboarding`,
       },
     });
 
     if (error) {
       setError(error.message);
       setLoading(false);
-    } else {
+    } else if (data.session) {
+      // Email confirmation disabled — go straight through
       router.push("/onboarding");
       router.refresh();
+    } else {
+      // Email confirmation required
+      setVerified(true);
+      setLoading(false);
     }
+  }
+
+  if (verified) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-apple-gray-50 px-4">
+        <div className="w-full max-w-sm text-center">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-apple-xl bg-apple-gray-950 mb-4 shadow-apple-md">
+            <span className="text-white font-semibold text-xl tracking-tight">K</span>
+          </div>
+          <div className="bg-white rounded-apple-2xl shadow-apple-md p-8">
+            <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+              <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+                <path d="M2 11l6 6L20 4" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+            <h2 className="text-lg font-semibold text-apple-gray-950 mb-2">Check your email</h2>
+            <p className="text-sm text-apple-gray-500 mb-1">
+              We sent a verification link to
+            </p>
+            <p className="text-sm font-medium text-apple-gray-950 mb-4">{email}</p>
+            <p className="text-xs text-apple-gray-400">
+              Click the link in the email to activate your account, then come back here to sign in.
+            </p>
+          </div>
+          <p className="text-center text-sm text-apple-gray-500 mt-6">
+            Already verified?{" "}
+            <Link href="/login" className="text-apple-gray-950 font-medium hover:underline">
+              Sign in
+            </Link>
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -42,7 +82,7 @@ export default function SignupPage() {
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-apple-xl bg-apple-gray-950 mb-4 shadow-apple-md">
-            <span className="text-white font-semibold text-xl tracking-tight">L</span>
+            <span className="text-white font-semibold text-xl tracking-tight">K</span>
           </div>
           <h1 className="text-2xl font-semibold text-apple-gray-950 tracking-tight">Kenetic</h1>
         </div>

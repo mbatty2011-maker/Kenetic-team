@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
   try {
     const { sendEmail } = await import("@/lib/tools/email");
     await sendEmail({
-      to: process.env.GMAIL_FROM_ADDRESS ?? "",
+      to: user.email ?? process.env.GMAIL_FROM_ADDRESS ?? "",
       subject,
       body,
     });

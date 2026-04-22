@@ -210,7 +210,7 @@ export default function NewTaskModal({ onClose }: { onClose: () => void }) {
               <textarea
                 value={taskDescription}
                 onChange={(e) => setTaskDescription(e.target.value)}
-                placeholder={`e.g. "Research Macey's and draft an outreach email to their buyer"`}
+                placeholder={`e.g. "Research our top competitor and draft a comparison report"`}
                 className="w-full px-3 py-3 bg-apple-gray-50 border border-apple-gray-200 rounded-apple-lg text-sm text-apple-gray-950 placeholder-apple-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-black/10 focus:border-apple-gray-300 transition-all"
                 rows={4}
                 onKeyDown={(e) => { if (e.key === "Enter" && e.metaKey) runTask(); }}
