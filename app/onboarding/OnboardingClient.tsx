@@ -115,12 +115,18 @@ export default function OnboardingClient({ userName }: { userName: string }) {
           full_name: userName,
           company_name: answers.companyName,
           role_title: answers.roleTitle,
-          user_context: userContext,
           updated_at: new Date().toISOString(),
         })
         .eq("id", user.id);
 
       if (updateError) throw updateError;
+
+      // Save context to knowledge base (agents read this automatically)
+      await supabase.from("knowledge_base").insert({
+        user_id: user.id,
+        section_title: "My Profile & Goals",
+        content: userContext,
+      });
 
       // Fire welcome email — non-blocking
       fetch("/api/welcome", { method: "POST" }).catch(() => {});
