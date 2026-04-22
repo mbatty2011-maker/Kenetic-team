@@ -109,34 +109,15 @@ export default function OnboardingClient({ userName }: { userName: string }) {
         `Current goals and priorities:\n${answers.goals}`,
       ].join("\n");
 
-      // Update existing profile row (created by trigger on signup)
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .update({
-          full_name: userName,
-          company_name: answers.companyName,
-          role_title: answers.roleTitle,
-          user_context: userContext,
-          onboarding_complete: true,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", user.id);
+      const { error: rpcError } = await supabase.rpc("complete_onboarding", {
+        p_user_id: user.id,
+        p_full_name: userName,
+        p_company_name: answers.companyName,
+        p_role_title: answers.roleTitle,
+        p_user_context: userContext,
+      });
 
-      if (updateError) {
-        // Row doesn't exist yet — insert it
-        const { error: insertError } = await supabase
-          .from("profiles")
-          .insert({
-            id: user.id,
-            full_name: userName,
-            company_name: answers.companyName,
-            role_title: answers.roleTitle,
-            user_context: userContext,
-            onboarding_complete: true,
-            updated_at: new Date().toISOString(),
-          });
-        if (insertError) throw insertError;
-      }
+      if (rpcError) throw rpcError;
 
       // Fire welcome email — non-blocking
       fetch("/api/welcome", { method: "POST" }).catch(() => {});
