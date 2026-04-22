@@ -103,12 +103,12 @@ export async function POST(request: NextRequest) {
 
           const rawText = response.content[0]?.type === "text" ? response.content[0].text.trim() : "";
 
-          // Parse JSON action
+          // Parse JSON action — extract first {...} object found in the response
           let parsed: AgentAction;
           try {
-            // Strip any accidental markdown fences
-            const cleaned = rawText.replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/, "").trim();
-            parsed = JSON.parse(cleaned);
+            const match = rawText.match(/\{[\s\S]*?\}(?=\s*(\{|$))/);
+            if (!match) throw new Error("no JSON found");
+            parsed = JSON.parse(match[0]);
           } catch {
             send({ type: "error", message: `Could not parse agent response: ${rawText}` });
             break;
