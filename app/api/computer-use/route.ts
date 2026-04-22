@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
         for (let i = 0; i < MAX_ITERATIONS; i++) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const response = await (anthropic.beta.messages as any).create({
-            model: "claude-sonnet-4-6",
+            model: "claude-3-7-sonnet-20250219",
             max_tokens: 4096,
             system: SYSTEM_PROMPT,
             tools,
