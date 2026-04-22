@@ -17,9 +17,9 @@ interface Answers {
 const STEPS = [
   {
     key: "companyName" as const,
-    question: "What's your company or project called?",
+    question: "What is your company or project called?",
     placeholder: "Acme Inc.",
-    hint: "Just the name — we'll use this across your team.",
+    hint: "Just the name — we will use this across your team.",
     type: "text",
   },
   {
@@ -31,7 +31,7 @@ const STEPS = [
   },
   {
     key: "roleTitle" as const,
-    question: "What's your role?",
+    question: "What is your role?",
     placeholder: "Founder & CEO",
     hint: "How should your team address you?",
     type: "text",
@@ -45,7 +45,7 @@ const STEPS = [
   },
   {
     key: "goals" as const,
-    question: "What's most important to you right now?",
+    question: "What is most important to you right now?",
     placeholder: "Launching our first paid tier by end of month, finding 10 design partners, and getting PR coverage…",
     hint: "Goals, priorities, anything your team should always keep in mind.",
     type: "textarea",
