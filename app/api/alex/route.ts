@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
     .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
 
   const [knowledgeBase, userContext] = await Promise.all([
-    readKnowledgeBase(),
+    readKnowledgeBase(supabase, user.id),
     getUserContext(supabase, user.id),
   ]);
   const userSection = buildUserSection(userContext, user.email ?? "");
@@ -144,7 +144,7 @@ export async function POST(req: NextRequest) {
               const toolResults: Anthropic.ToolResultBlockParam[] = [];
               for (const tu of toolUses) {
                 send({ type: "tool_running", tool: tu.name, label: TOOL_LABELS[tu.name] ?? tu.name });
-                const result = await executeAgentTool(tu.name, tu.input as Record<string, unknown>);
+                const result = await executeAgentTool(tu.name, tu.input as Record<string, unknown>, { supabase, userId: user.id });
                 toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: result });
               }
 
@@ -239,7 +239,8 @@ Provide your specialist perspective. Be specific, actionable, and concise. Stay 
                 [...historyMessages, { role: "user", content: `Task brief from Alex: ${taskSummary}` }],
                 tools,
                 anthropic,
-                1024
+                1024,
+                { supabase, userId: user.id }
               );
               agentResponses[agentKey] = content;
             } catch {
@@ -306,9 +307,12 @@ Keep each section tight. No fluff.`;
             messages: [{ role: "user", content: synthesisPrompt }],
           });
 
-          const finalOutput = synthesisResponse.content[0]?.type === "text"
-            ? synthesisResponse.content[0].text
+          let finalOutput = synthesisResponse.content[0]?.type === "text"
+            ? synthesisResponse.content[0].text.trim()
             : "";
+          if (finalOutput.startsWith("```")) {
+            finalOutput = finalOutput.replace(/^```\w*\n?/, "").replace(/\n?```$/, "");
+          }
 
           send({ type: "synthesis_complete", content: finalOutput, taskSummary });
           controller.close();

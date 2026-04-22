@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
       .eq("conversation_id", conversationId)
       .order("created_at", { ascending: false })
       .limit(20),
-    readKnowledgeBase(),
+    readKnowledgeBase(supabase, user.id),
     getUserContext(supabase, user.id),
   ]);
 
@@ -151,7 +151,7 @@ export async function POST(req: NextRequest) {
           const toolResults: Anthropic.ToolResultBlockParam[] = [];
           for (const tu of toolUses) {
             send({ type: "tool_running", tool: tu.name, label: TOOL_LABELS[tu.name] ?? tu.name });
-            const result = await executeAgentTool(tu.name, tu.input as Record<string, unknown>);
+            const result = await executeAgentTool(tu.name, tu.input as Record<string, unknown>, { supabase, userId: user.id });
             toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: result });
           }
 

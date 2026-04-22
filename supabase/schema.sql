@@ -23,10 +23,21 @@ create table if not exists messages (
 create table if not exists profiles (
   id uuid primary key references auth.users on delete cascade,
   full_name text,
-  company_name text,
+  company_name text default 'LineSkip',
   role_title text default 'Founder & CEO',
   avatar_url text,
+  user_context text,
+  onboarding_complete boolean default false,
   updated_at timestamptz default now()
+);
+
+-- Per-user knowledge base (replaces shared Google Doc)
+create table if not exists knowledge_base (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users on delete cascade,
+  section_title text not null,
+  content text not null,
+  created_at timestamptz default now()
 );
 
 -- Auto-create profile on signup
@@ -48,6 +59,7 @@ create trigger on_auth_user_created
 alter table conversations enable row level security;
 alter table messages enable row level security;
 alter table profiles enable row level security;
+alter table knowledge_base enable row level security;
 
 -- Policies
 create policy "Users can manage their own conversations"
@@ -62,6 +74,15 @@ create policy "Users can manage their own profile"
   on profiles for all
   using (auth.uid() = id);
 
+create policy "Users can read own knowledge base"
+  on knowledge_base for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert own knowledge base"
+  on knowledge_base for insert
+  with check (auth.uid() = user_id);
+
 -- Indexes for performance
 create index if not exists messages_conversation_id_idx on messages (conversation_id, created_at desc);
 create index if not exists conversations_user_agent_idx on conversations (user_id, agent_key, updated_at desc);
+create index if not exists knowledge_base_user_id_idx on knowledge_base (user_id, created_at asc);

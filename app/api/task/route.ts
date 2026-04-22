@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
   }
 
   const [knowledgeBase, userContext] = await Promise.all([
-    readKnowledgeBase(),
+    readKnowledgeBase(supabase, user.id),
     getUserContext(supabase, user.id),
   ]);
   const userSection = buildUserSection(userContext, user.email ?? "");
@@ -199,7 +199,7 @@ export async function POST(req: NextRequest) {
             const label = TOOL_LABELS[tu.name] ?? tu.name;
             addStep({ type: "tool_call", label, tool: tu.name });
 
-            const result = await executeAgentTool(tu.name, tu.input as Record<string, unknown>);
+            const result = await executeAgentTool(tu.name, tu.input as Record<string, unknown>, { supabase, userId: user.id });
 
             addStep({
               type: "tool_result",

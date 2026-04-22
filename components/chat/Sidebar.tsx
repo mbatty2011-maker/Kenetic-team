@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { User } from "@supabase/supabase-js";
 import { AGENTS } from "@/lib/agents";
 import { createClient } from "@/lib/supabase/client";
@@ -155,13 +156,8 @@ export default function Sidebar({
   return (
     <div className="h-full flex flex-col dark-scrollbar" style={{ background: "#1C1C1E" }}>
       {/* Logo */}
-      <div className="px-4 pt-5 pb-4 flex items-center gap-3">
-        <div className="w-8 h-8 rounded-apple-md bg-white/10 flex items-center justify-center flex-shrink-0">
-          <span className="text-white font-semibold text-sm">L</span>
-        </div>
-        <div>
-          <div className="text-white font-semibold text-sm tracking-tight leading-none">Kenetic</div>
-        </div>
+      <div className="px-4 pt-5 pb-4 flex items-center">
+        <Image src="/knetc-logo.png" alt="knetc team" width={96} height={26} className="h-6 w-auto invert" />
       </div>
 
       <div className="mx-3 border-t border-white/8 mb-2" />
@@ -362,6 +358,28 @@ export default function Sidebar({
                 {pendingTaskCount}
               </span>
             )}
+          </Link>
+        </div>
+
+        {/* Computer Use */}
+        <div className="mt-1">
+          <Link
+            href="/chat/computer"
+            onClick={onClose}
+            className={`flex items-center gap-2.5 px-2 py-2 rounded-apple-md transition-colors duration-200 ${
+              currentAgent === "computer" ? "bg-white/12" : "hover:bg-white/6"
+            }`}
+          >
+            <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.6" strokeOpacity="0.7">
+                <rect x="2" y="3" width="20" height="14" rx="2" />
+                <path d="M8 21h8M12 17v4" strokeLinecap="round" />
+              </svg>
+            </div>
+            <div>
+              <div className="text-white text-sm font-medium leading-none">Computer</div>
+              <div className="text-white/40 text-xs mt-0.5">Live browser control</div>
+            </div>
           </Link>
         </div>
 

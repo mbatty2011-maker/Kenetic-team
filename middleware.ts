@@ -33,7 +33,7 @@ export async function middleware(request: NextRequest) {
 
   // Public paths that don't require auth
   const publicPaths = ["/login", "/signup", "/auth/callback"];
-  const isPublicPath = publicPaths.some((p) => pathname.startsWith(p));
+  const isPublicPath = pathname === "/" || publicPaths.some((p) => pathname.startsWith(p));
 
   if (!user && !isPublicPath) {
     const url = request.nextUrl.clone();

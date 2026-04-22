@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
     }));
 
   const [knowledgeBase, userContext] = await Promise.all([
-    readKnowledgeBase(),
+    readKnowledgeBase(supabase, user.id),
     getUserContext(supabase, user.id),
   ]);
   const userSection = buildUserSection(userContext, user.email ?? "");
@@ -87,7 +87,8 @@ BOARDROOM RULE: Use your tools directly and immediately — no need to ask permi
         [...historyMessages, { role: "user", content: message }],
         tools,
         anthropic,
-        1024
+        1024,
+        { supabase, userId: user.id }
       );
       return { agentKey, content };
     })

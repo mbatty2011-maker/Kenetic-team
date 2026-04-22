@@ -36,7 +36,7 @@ export async function sendEmail({ to, subject, body }: EmailOptions) {
 
   // Build RFC 2822 email message
   const emailLines = [
-    `From: Kenetic <${from}>`,
+    `From: knetc <${from}>`,
     `To: ${to}`,
     `Subject: ${subject}`,
     `Content-Type: text/plain; charset=utf-8`,
@@ -95,7 +95,7 @@ export async function draftEmail({ to, subject, body }: EmailOptions) {
   }
 
   const emailLines = [
-    `From: Kenetic <${from}>`,
+    `From: knetc <${from}>`,
     `To: ${to}`,
     `Subject: ${subject}`,
     `Content-Type: text/plain; charset=utf-8`,

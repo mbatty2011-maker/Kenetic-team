@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AgentKey } from "./agents";
 import { tavilySearch, formatSearchResults } from "./tools/search";
 import { createSpreadsheet, readSpreadsheet } from "./tools/sheets";
@@ -6,6 +7,8 @@ import { createDocument } from "./tools/gdocs";
 import { sendEmail, draftEmail } from "./tools/email";
 import { appendToKnowledgeBase } from "./tools/knowledge";
 import { executeCode } from "./tools/codeExecution";
+
+export type ToolContext = { supabase: SupabaseClient; userId: string };
 
 // ─── Tool definitions ────────────────────────────────────────────────────────
 
@@ -214,7 +217,8 @@ export const SSH_CONFIRMATION_TOKEN = "SSH_CONFIRMATION_REQUIRED";
 
 export async function executeAgentTool(
   name: string,
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
+  context: ToolContext
 ): Promise<string> {
   try {
     switch (name) {
@@ -265,7 +269,7 @@ export async function executeAgentTool(
       }
 
       case "append_to_knowledge_base": {
-        await appendToKnowledgeBase(input.section_title as string, input.content as string);
+        await appendToKnowledgeBase(context.supabase, context.userId, input.section_title as string, input.content as string);
         return `Section "${input.section_title}" saved to the Knowledge Base.`;
       }
 
@@ -310,7 +314,8 @@ export async function callAgentWithTools(
   messages: Anthropic.MessageParam[],
   tools: Anthropic.Tool[],
   anthropic: Anthropic,
-  maxTokens = 1024
+  maxTokens = 1024,
+  context?: ToolContext
 ): Promise<string> {
   const currentMessages = [...messages];
 
@@ -333,7 +338,8 @@ export async function callAgentWithTools(
     const toolResults: Anthropic.ToolResultBlockParam[] = [];
     for (const block of response.content) {
       if (block.type === "tool_use") {
-        const result = await executeAgentTool(block.name, block.input as Record<string, unknown>);
+        if (!context) throw new Error("ToolContext required for tool use but was not provided");
+        const result = await executeAgentTool(block.name, block.input as Record<string, unknown>, context);
         toolResults.push({ type: "tool_result", tool_use_id: block.id, content: result });
       }
     }

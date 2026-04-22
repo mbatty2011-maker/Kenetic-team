@@ -25,7 +25,7 @@ export default function SignupPage() {
       password,
       options: {
         data: { full_name: fullName },
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=/onboarding`,
+        emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin}/auth/callback?next=/onboarding`,
       },
     });
 
@@ -84,7 +84,7 @@ export default function SignupPage() {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-apple-xl bg-apple-gray-950 mb-4 shadow-apple-md">
             <span className="text-white font-semibold text-xl tracking-tight">K</span>
           </div>
-          <h1 className="text-2xl font-semibold text-apple-gray-950 tracking-tight">Kenetic</h1>
+          <h1 className="text-2xl font-semibold text-apple-gray-950 tracking-tight">knetc</h1>
         </div>
 
         {/* Card */}
