@@ -8,6 +8,7 @@ import { AGENT_TOOLS, callAgentWithTools } from "@/lib/agent-tools";
 import { getUserContext, buildUserSection } from "@/lib/tools/user-context";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
