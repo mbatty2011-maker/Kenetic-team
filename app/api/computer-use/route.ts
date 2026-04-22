@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
 
         const tools: ComputerTool[] = [
           {
-            type: "computer_20250124",
+            type: "computer_20241022",
             name: "computer",
             display_width_px: DISPLAY_WIDTH,
             display_height_px: DISPLAY_HEIGHT,
@@ -90,12 +90,12 @@ export async function POST(request: NextRequest) {
         for (let i = 0; i < MAX_ITERATIONS; i++) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const response = await (anthropic.beta.messages as any).create({
-            model: "claude-3-7-sonnet-20250219",
+            model: "claude-3-5-sonnet-20241022",
             max_tokens: 4096,
             system: SYSTEM_PROMPT,
             tools,
             messages,
-            betas: ["computer-use-2025-01-24"],
+            betas: ["computer-use-2024-10-22"],
           });
 
           // Stream any text reasoning
