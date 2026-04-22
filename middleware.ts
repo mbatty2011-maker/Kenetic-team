@@ -51,10 +51,10 @@ export async function middleware(request: NextRequest) {
   if (user && pathname === "/onboarding") {
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("onboarding_complete")
+      .select("company_name")
       .eq("id", user.id)
       .single();
-    if (!profileError && profile?.onboarding_complete) {
+    if (!profileError && profile?.company_name) {
       const url = request.nextUrl.clone();
       url.pathname = "/chat";
       return NextResponse.redirect(url);

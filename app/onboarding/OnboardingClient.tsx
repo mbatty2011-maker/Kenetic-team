@@ -109,15 +109,18 @@ export default function OnboardingClient({ userName }: { userName: string }) {
         `Current goals and priorities:\n${answers.goals}`,
       ].join("\n");
 
-      const { error: rpcError } = await supabase.rpc("complete_onboarding", {
-        p_user_id: user.id,
-        p_full_name: userName,
-        p_company_name: answers.companyName,
-        p_role_title: answers.roleTitle,
-        p_user_context: userContext,
-      });
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({
+          full_name: userName,
+          company_name: answers.companyName,
+          role_title: answers.roleTitle,
+          user_context: userContext,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", user.id);
 
-      if (rpcError) throw rpcError;
+      if (updateError) throw updateError;
 
       // Fire welcome email — non-blocking
       fetch("/api/welcome", { method: "POST" }).catch(() => {});
