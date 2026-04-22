@@ -49,12 +49,12 @@ export async function middleware(request: NextRequest) {
 
   // If authenticated user visits /onboarding but has already completed it, send to /chat
   if (user && pathname === "/onboarding") {
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("onboarding_complete")
       .eq("id", user.id)
       .single();
-    if (profile?.onboarding_complete) {
+    if (!profileError && profile?.onboarding_complete) {
       const url = request.nextUrl.clone();
       url.pathname = "/chat";
       return NextResponse.redirect(url);

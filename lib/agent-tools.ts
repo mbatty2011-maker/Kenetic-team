@@ -250,6 +250,7 @@ export async function executeAgentTool(
 
       case "send_email": {
         const to = (input.to as string) || (process.env.GMAIL_FROM_ADDRESS ?? "");
+        if (!to.trim()) throw new Error("Email recipient address is missing");
         await sendEmail({
           to,
           subject: input.subject as string,
@@ -260,6 +261,7 @@ export async function executeAgentTool(
 
       case "draft_email": {
         const to = (input.to as string) || (process.env.GMAIL_FROM_ADDRESS ?? "");
+        if (!to.trim()) throw new Error("Email recipient address is missing");
         await draftEmail({
           to,
           subject: input.subject as string,

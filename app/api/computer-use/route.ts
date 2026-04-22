@@ -130,12 +130,16 @@ export async function POST(request: NextRequest) {
 
           const rawText = response.content[0]?.type === "text" ? response.content[0].text.trim() : "";
 
-          // Parse JSON action — extract first {...} object found in the response
+          // Parse JSON action — extract first balanced {...} from the response
           let parsed: AgentAction;
           try {
-            const match = rawText.match(/\{[\s\S]*?\}(?=\s*(\{|$))/);
-            if (!match) throw new Error("no JSON found");
-            parsed = JSON.parse(match[0]);
+            let depth = 0, start = -1, end = -1;
+            for (let ci = 0; ci < rawText.length; ci++) {
+              if (rawText[ci] === "{") { if (depth === 0) start = ci; depth++; }
+              else if (rawText[ci] === "}") { depth--; if (depth === 0) { end = ci; break; } }
+            }
+            if (start === -1 || end === -1) throw new Error("no JSON found");
+            parsed = JSON.parse(rawText.slice(start, end + 1));
           } catch {
             send({ type: "error", message: `Could not parse agent response: ${rawText}` });
             break;

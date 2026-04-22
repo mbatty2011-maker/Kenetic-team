@@ -239,15 +239,19 @@ export default function OnboardingClient({ userName }: { userName: string }) {
           <button
             onClick={async () => {
               setSaving(true);
-              const { data: { user } } = await supabase.auth.getUser();
-              if (user) {
-                await supabase.from("profiles").upsert({
-                  id: user.id,
-                  onboarding_complete: true,
-                  updated_at: new Date().toISOString(),
-                });
+              try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (user) {
+                  await supabase.from("profiles").upsert({
+                    id: user.id,
+                    onboarding_complete: true,
+                    updated_at: new Date().toISOString(),
+                  });
+                }
+                router.push("/chat");
+              } catch {
+                setSaving(false);
               }
-              router.push("/chat");
             }}
             className="hover:text-apple-gray-600 transition-colors"
           >

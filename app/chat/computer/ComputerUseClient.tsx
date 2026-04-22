@@ -35,6 +35,10 @@ export default function ComputerUseClient() {
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
+    return () => { abortRef.current?.abort(); };
+  }, []);
+
+  useEffect(() => {
     if (feedRef.current) {
       feedRef.current.scrollTop = feedRef.current.scrollHeight;
     }

@@ -104,26 +104,34 @@ export default function Sidebar({
   }
 
   async function deleteConversation(convoId: string, agentKey: string) {
-    await supabase.from("messages").delete().eq("conversation_id", convoId);
-    await supabase.from("conversations").delete().eq("id", convoId).eq("user_id", user.id);
-    setConversations((prev) => prev.filter((c) => c.id !== convoId));
-    setDeletingId(null);
-    if (searchParams.get("cid") === convoId) {
-      router.push(`/chat/${agentKey}`);
+    try {
+      await supabase.from("messages").delete().eq("conversation_id", convoId);
+      const { error } = await supabase.from("conversations").delete().eq("id", convoId).eq("user_id", user.id);
+      if (error) throw error;
+      setConversations((prev) => prev.filter((c) => c.id !== convoId));
+      if (searchParams.get("cid") === convoId) {
+        router.push(`/chat/${agentKey}`);
+      }
+    } catch {
+      // silently ignore — UI stays consistent
+    } finally {
+      setDeletingId(null);
     }
   }
 
   async function renameConversation(convoId: string) {
     const trimmed = renameValue.trim();
     if (trimmed) {
-      await supabase
+      const { error } = await supabase
         .from("conversations")
         .update({ title: trimmed })
         .eq("id", convoId)
         .eq("user_id", user.id);
-      setConversations((prev) =>
-        prev.map((c) => (c.id === convoId ? { ...c, title: trimmed } : c))
-      );
+      if (!error) {
+        setConversations((prev) =>
+          prev.map((c) => (c.id === convoId ? { ...c, title: trimmed } : c))
+        );
+      }
     }
     setRenamingId(null);
   }

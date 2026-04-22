@@ -33,11 +33,8 @@ export default function SignupPage() {
       setError(error.message);
       setLoading(false);
     } else if (data.session) {
-      // Email confirmation disabled — go straight through
       router.push("/onboarding");
-      router.refresh();
     } else {
-      // Email confirmation required
       setVerified(true);
       setLoading(false);
     }
