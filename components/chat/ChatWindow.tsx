@@ -28,6 +28,7 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
   const [isSearching, setIsSearching] = useState(false);
   const [toolStatus, setToolStatus] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const isNewConvoRef = useRef(false);
 
   const agent = agentKey !== "boardroom" ? AGENTS.find((a) => a.key === agentKey) : null;
   const isBoardroom = agentKey === "boardroom";
@@ -50,7 +51,7 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
       .select("*")
       .eq("conversation_id", cid)
       .order("created_at", { ascending: true });
-    if (data) setMessages(data as Message[]);
+    if (data && searchParams.get("cid") === cid) setMessages(data as Message[]);
   }
 
   useEffect(() => {
@@ -87,6 +88,7 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    isNewConvoRef.current = !conversationId;
     const cid = await ensureConversation(content);
 
     const userMsg: Message = {
@@ -175,6 +177,17 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
                     : m
                 )
               );
+            } else if (parsed.error) {
+              setIsSearching(false);
+              setToolStatus(null);
+              fullContent = `Something went wrong: ${parsed.error}`;
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === streamingId
+                    ? { ...m, content: fullContent, isStreaming: false }
+                    : m
+                )
+              );
             }
           } catch {}
         }
@@ -188,16 +201,22 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
         )
       );
 
-      // Save assistant message
-      await supabase.from("messages").insert({
-        conversation_id: cid,
-        user_id: uid,
-        agent_key: agentKey,
-        role: "assistant",
-        content: fullContent,
-      });
+      if (fullContent) {
+        await supabase.from("messages").insert({
+          conversation_id: cid,
+          user_id: uid,
+          agent_key: agentKey,
+          role: "assistant",
+          content: fullContent,
+        });
+      }
 
-      // Update conversation updated_at
+      // Auto-generate a better title after the first exchange
+      if (isNewConvoRef.current) {
+        isNewConvoRef.current = false;
+        fetch(`/api/conversation/${cid}/title`, { method: "POST" }).catch(() => {});
+      }
+
       await supabase
         .from("conversations")
         .update({ updated_at: new Date().toISOString() })

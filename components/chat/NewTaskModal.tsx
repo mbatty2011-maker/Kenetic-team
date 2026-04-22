@@ -30,6 +30,7 @@ const TOOL_ICONS: Record<string, string> = {
   append_to_knowledge_base: "💾",
   run_ssh_command:          "🖥️",
   propose_ssh_command:      "🖥️",
+  execute_code:             "⚙️",
 };
 
 export default function NewTaskModal({ onClose }: { onClose: () => void }) {
@@ -41,13 +42,18 @@ export default function NewTaskModal({ onClose }: { onClose: () => void }) {
   const [confirmSSH, setConfirmSSH] = useState<ConfirmSSH | null>(null);
   const stepsEndRef = useRef<HTMLDivElement>(null);
   const readerRef = useRef<ReadableStreamDefaultReader | null>(null);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
     stepsEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [steps]);
 
   useEffect(() => {
-    return () => { readerRef.current?.cancel(); };
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      readerRef.current?.cancel();
+    };
   }, []);
 
   async function runTask() {
@@ -63,9 +69,14 @@ export default function NewTaskModal({ onClose }: { onClose: () => void }) {
         body: JSON.stringify({ agentKey: selectedAgent, taskDescription }),
       });
 
-      if (!res.ok || !res.body) throw new Error("Failed to start task");
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error ?? `Server error ${res.status}`);
+      }
+      if (!res.body) throw new Error("No response body");
       await consumeStream(res.body.getReader());
     } catch (err) {
+      if (!mountedRef.current) return;
       setErrorMsg(err instanceof Error ? err.message : "Unknown error");
       setPhase("error");
     }
@@ -94,6 +105,7 @@ export default function NewTaskModal({ onClose }: { onClose: () => void }) {
   }
 
   function handleEvent(event: Record<string, unknown>) {
+    if (!mountedRef.current) return;
     if (event.type === "step") {
       setSteps((prev) => [...prev, event.data as TaskStep]);
     } else if (event.type === "complete") {
@@ -208,7 +220,7 @@ export default function NewTaskModal({ onClose }: { onClose: () => void }) {
 
             <button
               onClick={runTask}
-              disabled={!taskDescription.trim()}
+              disabled={!taskDescription.trim() || phase !== "form"}
               className="w-full py-2.5 rounded-apple-lg text-sm font-semibold text-white transition-all disabled:opacity-40"
               style={{ background: agent?.accent ?? "#1C1C1E" }}
             >

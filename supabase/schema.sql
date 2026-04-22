@@ -23,7 +23,7 @@ create table if not exists messages (
 create table if not exists profiles (
   id uuid primary key references auth.users on delete cascade,
   full_name text,
-  company_name text default 'LineSkip',
+  company_name text,
   role_title text default 'Founder & CEO',
   avatar_url text,
   updated_at timestamptz default now()

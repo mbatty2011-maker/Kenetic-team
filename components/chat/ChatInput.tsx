@@ -3,6 +3,9 @@
 import { useState, useRef, useEffect } from "react";
 import { AGENTS } from "@/lib/agents";
 
+const MAX_CHARS = 32000;
+const WARN_AT = MAX_CHARS * 0.5;
+
 export default function ChatInput({
   onSend,
   isLoading,
@@ -15,6 +18,9 @@ export default function ChatInput({
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const agent = AGENTS.find((a) => a.key === agentKey);
+  const charCount = value.length;
+  const showCounter = charCount >= WARN_AT;
+  const isOverLimit = charCount > MAX_CHARS;
 
   useEffect(() => {
     adjustHeight();
@@ -24,9 +30,7 @@ export default function ChatInput({
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
-    const lineHeight = 20;
-    const maxLines = 5;
-    const maxHeight = lineHeight * maxLines + 24;
+    const maxHeight = 20 * 5 + 24;
     el.style.height = Math.min(el.scrollHeight, maxHeight) + "px";
     el.style.overflowY = el.scrollHeight > maxHeight ? "auto" : "hidden";
   }
@@ -40,47 +44,60 @@ export default function ChatInput({
 
   function handleSend() {
     const trimmed = value.trim();
-    if (!trimmed || isLoading) return;
+    if (!trimmed || isLoading || isOverLimit) return;
     onSend(trimmed);
     setValue("");
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-    }
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
   }
 
   const accentColor = agent?.accent || "#1C1C1E";
 
   return (
     <div className="px-4 pb-4 pt-2">
-      <div className="bg-white rounded-apple-xl border border-apple-gray-200 shadow-apple-sm flex items-end gap-2 px-3 py-2 focus-within:border-apple-gray-400 transition-colors">
+      <div
+        className={`bg-white rounded-apple-xl border shadow-apple-sm flex items-end gap-2 px-3 py-2 focus-within:border-apple-gray-400 transition-colors ${
+          isOverLimit ? "border-red-300 focus-within:border-red-400" : "border-apple-gray-200"
+        }`}
+      >
         <textarea
           ref={textareaRef}
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={isLoading}
-          placeholder={`Message ${agentKey === "boardroom" ? "Boardroom" : agent?.name ?? ""}...`}
+          placeholder={`Message ${agentKey === "boardroom" ? "Boardroom" : (agent?.name ?? "")}...`}
           rows={1}
           className="flex-1 text-sm text-apple-gray-950 placeholder:text-apple-gray-400 leading-5 py-1 bg-transparent disabled:opacity-50"
           style={{ minHeight: "28px", maxHeight: "120px" }}
         />
 
-        <button
-          onClick={handleSend}
-          disabled={!value.trim() || isLoading}
-          className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white transition-all disabled:opacity-30 hover:opacity-80 active:scale-95 mb-0.5"
-          style={{ background: accentColor }}
-        >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path
-              d="M2 7L7 2L12 7M7 2V12"
-              stroke="white"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0 mb-0.5">
+          {showCounter && (
+            <span
+              className={`text-[10px] tabular-nums transition-colors ${
+                isOverLimit ? "text-red-500 font-semibold" : "text-apple-gray-400"
+              }`}
+            >
+              {charCount.toLocaleString()}/{MAX_CHARS.toLocaleString()}
+            </span>
+          )}
+          <button
+            onClick={handleSend}
+            disabled={!value.trim() || isLoading || isOverLimit}
+            className="w-8 h-8 rounded-full flex items-center justify-center text-white transition-all disabled:opacity-30 hover:opacity-80 active:scale-95"
+            style={{ background: accentColor }}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path
+                d="M2 7L7 2L12 7M7 2V12"
+                stroke="white"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
       <p className="text-center text-xs text-apple-gray-400 mt-1.5">
         Enter to send · Shift+Enter for new line

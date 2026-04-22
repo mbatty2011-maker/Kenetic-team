@@ -6,6 +6,7 @@ import MarkdownContent from "./MarkdownContent";
 interface SynthesisCardProps {
   content: string;
   taskSummary: string;
+  userEmail?: string;
   onConfirmSend: () => Promise<void>;
   onCancel: () => void;
 }
@@ -13,17 +14,25 @@ interface SynthesisCardProps {
 export default function SynthesisCard({
   content,
   taskSummary,
+  userEmail,
   onConfirmSend,
   onCancel,
 }: SynthesisCardProps) {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   async function handleSend() {
     setSending(true);
-    await onConfirmSend();
-    setSending(false);
-    setSent(true);
+    setSendError(null);
+    try {
+      await onConfirmSend();
+      setSent(true);
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : "Send failed");
+    } finally {
+      setSending(false);
+    }
   }
 
   return (
@@ -81,9 +90,11 @@ export default function SynthesisCard({
               >
                 Cancel
               </button>
-              <span className="text-xs text-apple-gray-400 ml-auto">
-                To: mbatty2011@gmail.com
-              </span>
+              {sendError ? (
+                <span className="text-xs text-red-600 ml-auto">{sendError}</span>
+              ) : userEmail ? (
+                <span className="text-xs text-apple-gray-400 ml-auto">To: {userEmail}</span>
+              ) : null}
             </>
           ) : (
             <div className="flex items-center gap-2">
@@ -93,9 +104,7 @@ export default function SynthesisCard({
                 </svg>
               </div>
               <span className="text-sm text-green-700 font-medium">
-                {process.env.NEXT_PUBLIC_GMAIL_CONFIGURED === "true"
-                  ? "Sent to mbatty2011@gmail.com"
-                  : "Gmail not yet configured — brief saved above"}
+                {userEmail ? `Sent to ${userEmail}` : "Brief sent"}
               </span>
               <button
                 onClick={onCancel}

@@ -35,8 +35,7 @@ export default function LoginPage() {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-apple-xl bg-apple-gray-950 mb-4 shadow-apple-md">
             <span className="text-white font-semibold text-xl tracking-tight">L</span>
           </div>
-          <h1 className="text-2xl font-semibold text-apple-gray-950 tracking-tight">LineSkip</h1>
-          <p className="text-sm text-apple-gray-500 mt-1">Virtual Team</p>
+          <h1 className="text-2xl font-semibold text-apple-gray-950 tracking-tight">Kenetic</h1>
         </div>
 
         {/* Card */}

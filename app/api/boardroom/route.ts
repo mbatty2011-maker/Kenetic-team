@@ -5,6 +5,9 @@ import { cookies } from "next/headers";
 import { SYSTEM_PROMPTS, type AgentKey } from "@/lib/agents";
 import { readKnowledgeBase } from "@/lib/tools/knowledge";
 import { AGENT_TOOLS, callAgentWithTools } from "@/lib/agent-tools";
+import { getUserContext, buildUserSection } from "@/lib/tools/user-context";
+
+export const dynamic = "force-dynamic";
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
@@ -32,7 +35,16 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { message, conversationId } = await req.json();
+  let message: string, conversationId: string;
+  try {
+    ({ message, conversationId } = await req.json());
+  } catch {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+  if (!message || typeof message !== "string" || message.length > 32000)
+    return NextResponse.json({ error: "Invalid message" }, { status: 400 });
+  if (!conversationId || typeof conversationId !== "string")
+    return NextResponse.json({ error: "Invalid conversationId" }, { status: 400 });
 
   // Load boardroom history
   const { data: history } = await supabase
@@ -50,14 +62,21 @@ export async function POST(req: NextRequest) {
       content: m.content,
     }));
 
-  const knowledgeBase = await readKnowledgeBase();
-  const knowledgeSuffix = knowledgeBase
-    ? `\n\n---\n## LineSkip Knowledge Base (live)\n${knowledgeBase}\n---`
-    : "";
+  const [knowledgeBase, userContext] = await Promise.all([
+    readKnowledgeBase(),
+    getUserContext(supabase, user.id),
+  ]);
+  const userSection = buildUserSection(userContext, user.email ?? "");
+  const knowledgeSuffix = [
+    knowledgeBase ? `\n\n---\n## Knowledge Base (live)\n${knowledgeBase}\n---` : "",
+    userSection,
+  ].join("");
 
   const systemSuffix = `
 The user sent this to the Boardroom: "${message}"
-Only respond if this is relevant to your specific role. If it's outside your domain, respond with exactly: SKIP`;
+Only respond if this is relevant to your specific role. If it's outside your domain, respond with exactly: SKIP
+
+BOARDROOM RULE: Use your tools directly and immediately — no need to ask permission here. If you can produce a useful artifact (spreadsheet, doc, draft), do it now.`;
 
   // Fan out to all boardroom agents in parallel
   const results = await Promise.allSettled(

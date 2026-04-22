@@ -106,7 +106,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(3001, () => {
-  console.log("\n🔐  LineSkip — Google OAuth Setup\n");
+  console.log("\n🔐  Google OAuth Setup\n");
   console.log("⚠️   IMPORTANT: Before proceeding, make sure you've added");
   console.log("    this exact URI to your Google OAuth credentials:");
   console.log("\n    http://localhost:3001/callback\n");

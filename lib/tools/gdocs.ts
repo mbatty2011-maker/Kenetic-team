@@ -1,18 +1,5 @@
-async function getAccessToken(): Promise<string> {
-  const res = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: process.env.GOOGLE_CLIENT_ID!,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-      refresh_token: process.env.GOOGLE_REFRESH_TOKEN!,
-      grant_type: "refresh_token",
-    }),
-  });
-  const data = await res.json();
-  if (!data.access_token) throw new Error("Failed to get access token");
-  return data.access_token;
-}
+import { getGoogleAccessToken } from "./google-auth";
+const getAccessToken = getGoogleAccessToken;
 
 export async function createDocument(
   title: string,
@@ -36,6 +23,17 @@ export async function createDocument(
       requests: [{ insertText: { location: { index: 1 }, text: content } }],
     }),
   });
+
+  // Share with the account owner so the file is always accessible
+  const shareEmail = process.env.GMAIL_FROM_ADDRESS ?? "";
+  await fetch(
+    `https://www.googleapis.com/drive/v3/files/${doc.documentId}/permissions`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ role: "writer", type: "user", emailAddress: shareEmail }),
+    }
+  );
 
   return {
     id: doc.documentId,

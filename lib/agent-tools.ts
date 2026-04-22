@@ -5,6 +5,8 @@ import { createSpreadsheet, readSpreadsheet } from "./tools/sheets";
 import { createDocument } from "./tools/gdocs";
 import { sendEmail, draftEmail } from "./tools/email";
 import { appendToKnowledgeBase } from "./tools/knowledge";
+import { executeCode } from "./tools/codeExecution";
+import { writeFile } from "./tools/fileSystem";
 
 // ─── Tool definitions ────────────────────────────────────────────────────────
 
@@ -80,35 +82,37 @@ const WEB_SEARCH: Anthropic.Tool = {
 const SEND_EMAIL: Anthropic.Tool = {
   name: "send_email",
   description:
-    "Send an email to Michael (mbatty2011@gmail.com). Only call this after the user has explicitly confirmed. In autonomous tasks, use draft_email instead.",
+    "Send an email to the user. Only call this after the user has explicitly confirmed. In autonomous tasks, use draft_email instead. The user's email address is provided in the User Context section of your system prompt — always use that address as the 'to' value.",
   input_schema: {
     type: "object" as const,
     properties: {
+      to: { type: "string", description: "Recipient email address — use the user's email from User Context" },
       subject: { type: "string" },
       body: { type: "string" },
     },
-    required: ["subject", "body"],
+    required: ["to", "subject", "body"],
   },
 };
 
 const DRAFT_EMAIL: Anthropic.Tool = {
   name: "draft_email",
   description:
-    "Create a Gmail draft to Michael (mbatty2011@gmail.com). The email is NOT sent — Michael reviews and sends it himself. Use this instead of send_email for autonomous tasks.",
+    "Create a Gmail draft. The email is NOT sent — the user reviews and sends it themselves. Use this instead of send_email for autonomous tasks. The user's email address is provided in the User Context section of your system prompt — always use that address as the 'to' value.",
   input_schema: {
     type: "object" as const,
     properties: {
+      to: { type: "string", description: "Recipient email address — use the user's email from User Context" },
       subject: { type: "string" },
       body: { type: "string" },
     },
-    required: ["subject", "body"],
+    required: ["to", "subject", "body"],
   },
 };
 
 const APPEND_TO_KB: Anthropic.Tool = {
   name: "append_to_knowledge_base",
   description:
-    "Append a new section to the LineSkip Knowledge Base Google Doc. Use to save research findings, meeting notes, financial data, or legal summaries permanently.",
+    "Append a new section to the Knowledge Base Google Doc. Use to save research findings, meeting notes, financial data, or legal summaries permanently.",
   input_schema: {
     type: "object" as const,
     properties: {
@@ -122,7 +126,7 @@ const APPEND_TO_KB: Anthropic.Tool = {
 const PROPOSE_SSH: Anthropic.Tool = {
   name: "propose_ssh_command",
   description:
-    "Propose an SSH command to run on the LineSkip Pi (192.168.68.92). This DOES NOT execute anything — it shows Michael the command so he can run it himself or confirm. Always use this in chat instead of executing directly.",
+    "Propose an SSH command to run on the user's server. This DOES NOT execute anything — it shows the user the command so they can run it themselves or confirm. Always use this in chat instead of executing directly.",
   input_schema: {
     type: "object" as const,
     properties: {
@@ -134,10 +138,87 @@ const PROPOSE_SSH: Anthropic.Tool = {
   },
 };
 
+const EXECUTE_CODE: Anthropic.Tool = {
+  name: "execute_code",
+  description:
+    "Execute Python or JavaScript code in a secure sandbox. Use this to test solutions before recommending them, debug algorithms, run data analysis, or validate that code works.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      code: { type: "string", description: "The code to execute" },
+      language: {
+        type: "string",
+        enum: ["python", "javascript"],
+        description: "The language to execute the code in",
+      },
+    },
+    required: ["code", "language"],
+  },
+};
+
+const WRITE_FILE: Anthropic.Tool = {
+  name: "write_file",
+  description:
+    "Write content to a file in the project directory. Use this to create pages, components, styles, or any code file. Path is relative to the project root (e.g. 'app/landing/page.tsx'). Creates any missing directories automatically.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      path: { type: "string", description: "Relative file path from project root, e.g. 'app/landing/page.tsx'" },
+      content: { type: "string", description: "Full file content to write" },
+    },
+    required: ["path", "content"],
+  },
+};
+
+// Computer Use tools — require a running container (see COMPUTER_USE_SETUP.md)
+const COMPUTER_USE_COMPUTER: Anthropic.Tool = {
+  name: "computer",
+  description: "Control a computer with mouse/keyboard and take screenshots. Requires a running container with a display — see COMPUTER_USE_SETUP.md.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      action: { type: "string", description: "The action to perform (screenshot, click, type, etc.)" },
+      coordinate: { type: "array", items: { type: "number" }, description: "[x, y] coordinate for click actions" },
+      text: { type: "string", description: "Text to type" },
+    },
+    required: ["action"],
+  },
+};
+
+const COMPUTER_USE_TEXT_EDITOR: Anthropic.Tool = {
+  name: "text_editor",
+  description: "View and edit files on the computer. Requires a running container — see COMPUTER_USE_SETUP.md.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      command: { type: "string", enum: ["view", "create", "str_replace", "insert", "undo_edit"] },
+      path: { type: "string" },
+      file_text: { type: "string" },
+      old_str: { type: "string" },
+      new_str: { type: "string" },
+      insert_line: { type: "number" },
+      new_file: { type: "string" },
+    },
+    required: ["command", "path"],
+  },
+};
+
+const COMPUTER_USE_BASH: Anthropic.Tool = {
+  name: "bash",
+  description: "Run bash commands on the computer. Requires a running container — see COMPUTER_USE_SETUP.md.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      command: { type: "string", description: "The bash command to run" },
+      restart: { type: "boolean", description: "Restart the shell session" },
+    },
+  },
+};
+
 const RUN_SSH: Anthropic.Tool = {
   name: "run_ssh_command",
   description:
-    "Execute a shell command on the LineSkip Pi (192.168.68.92, user: lineskippoc). Michael must confirm before execution — the system will pause and ask for confirmation automatically.",
+    "Execute a shell command on the user's server via SSH. The user must confirm before execution — the system will pause and ask for confirmation automatically.",
   input_schema: {
     type: "object" as const,
     properties: {
@@ -149,23 +230,27 @@ const RUN_SSH: Anthropic.Tool = {
 };
 
 // ─── Per-agent tool sets ─────────────────────────────────────────────────────
-// AGENT_TOOLS: used in /api/chat (chat conversations)
-// TASK_AGENT_TOOLS: used in /api/task (autonomous task queue)
 
+const ALL_TOOLS = [CREATE_SPREADSHEET, READ_SPREADSHEET, CREATE_DOCUMENT, WEB_SEARCH, SEND_EMAIL, DRAFT_EMAIL, APPEND_TO_KB];
+
+const KAI_COMPUTER_USE = [COMPUTER_USE_COMPUTER, COMPUTER_USE_TEXT_EDITOR, COMPUTER_USE_BASH];
+
+// AGENT_TOOLS: used in /api/chat — all agents get all tools; Kai also gets propose_ssh + execute_code + computer use
 export const AGENT_TOOLS: Partial<Record<AgentKey, Anthropic.Tool[]>> = {
-  alex:   [CREATE_SPREADSHEET, READ_SPREADSHEET, CREATE_DOCUMENT, WEB_SEARCH, SEND_EMAIL, DRAFT_EMAIL, APPEND_TO_KB],
-  jeremy: [CREATE_SPREADSHEET, READ_SPREADSHEET, CREATE_DOCUMENT, WEB_SEARCH, APPEND_TO_KB],
-  kai:    [CREATE_DOCUMENT, WEB_SEARCH, PROPOSE_SSH],
-  dana:   [DRAFT_EMAIL, SEND_EMAIL, WEB_SEARCH, CREATE_SPREADSHEET, CREATE_DOCUMENT],
-  marcus: [CREATE_DOCUMENT, WEB_SEARCH, APPEND_TO_KB],
+  alex:   ALL_TOOLS,
+  jeremy: ALL_TOOLS,
+  kai:    [...ALL_TOOLS, PROPOSE_SSH, EXECUTE_CODE],
+  dana:   ALL_TOOLS,
+  marcus: ALL_TOOLS,
 };
 
+// TASK_AGENT_TOOLS: used in /api/task — same but Kai gets run_ssh instead of propose_ssh
 export const TASK_AGENT_TOOLS: Partial<Record<AgentKey, Anthropic.Tool[]>> = {
-  alex:   [CREATE_SPREADSHEET, READ_SPREADSHEET, CREATE_DOCUMENT, WEB_SEARCH, DRAFT_EMAIL, APPEND_TO_KB],
-  jeremy: [CREATE_SPREADSHEET, READ_SPREADSHEET, CREATE_DOCUMENT, WEB_SEARCH, APPEND_TO_KB],
-  kai:    [CREATE_DOCUMENT, WEB_SEARCH, RUN_SSH],
-  dana:   [DRAFT_EMAIL, WEB_SEARCH, CREATE_SPREADSHEET, CREATE_DOCUMENT],
-  marcus: [CREATE_DOCUMENT, WEB_SEARCH, APPEND_TO_KB],
+  alex:   ALL_TOOLS,
+  jeremy: ALL_TOOLS,
+  kai:    [...ALL_TOOLS, RUN_SSH, EXECUTE_CODE],
+  dana:   ALL_TOOLS,
+  marcus: ALL_TOOLS,
 };
 
 // ─── Status labels for the UI ────────────────────────────────────────────────
@@ -180,6 +265,11 @@ export const TOOL_LABELS: Record<string, string> = {
   append_to_knowledge_base: "Saving to knowledge base...",
   propose_ssh_command:      "Proposing Pi command...",
   run_ssh_command:          "Running command on Pi...",
+  execute_code:             "Running code...",
+  write_file:               "Writing file...",
+  computer:                 "Using computer...",
+  text_editor:              "Editing file...",
+  bash:                     "Running shell command...",
 };
 
 // ─── Tool execution ──────────────────────────────────────────────────────────
@@ -219,31 +309,33 @@ export async function executeAgentTool(
       }
 
       case "send_email": {
+        const to = (input.to as string) || (process.env.GMAIL_FROM_ADDRESS ?? "");
         await sendEmail({
-          to: "mbatty2011@gmail.com",
+          to,
           subject: input.subject as string,
           body: input.body as string,
         });
-        return `Email sent to mbatty2011@gmail.com — subject: "${input.subject}"`;
+        return `Email sent to ${to} — subject: "${input.subject}"`;
       }
 
       case "draft_email": {
+        const to = (input.to as string) || (process.env.GMAIL_FROM_ADDRESS ?? "");
         await draftEmail({
-          to: "mbatty2011@gmail.com",
+          to,
           subject: input.subject as string,
           body: input.body as string,
         });
-        return `Draft created in Gmail — subject: "${input.subject}". Michael can review and send it from his inbox.`;
+        return `Draft created in Gmail — subject: "${input.subject}". The user can review and send it from their inbox.`;
       }
 
       case "append_to_knowledge_base": {
         await appendToKnowledgeBase(input.section_title as string, input.content as string);
-        return `Section "${input.section_title}" saved to the LineSkip Knowledge Base.`;
+        return `Section "${input.section_title}" saved to the Knowledge Base.`;
       }
 
       case "propose_ssh_command": {
         return (
-          `SSH command proposed for Michael's review:\n` +
+          `SSH command proposed for review:\n` +
           `\`\`\`bash\n${input.command}\n\`\`\`\n` +
           `Reason: ${input.reason}\n` +
           (input.expected_output ? `Expected: ${input.expected_output}` : "")
@@ -251,9 +343,33 @@ export async function executeAgentTool(
       }
 
       case "run_ssh_command": {
-        // Returns a special token — the task route handles this before calling executeAgentTool
-        // If somehow called directly, return the token and let the caller handle it
-        return `${SSH_CONFIRMATION_TOKEN}:${JSON.stringify({ command: input.command, reason: input.reason })}`;
+        throw new Error("run_ssh_command must be intercepted by the task route before reaching executeAgentTool");
+      }
+
+      case "write_file": {
+        const filePath = input.path as string;
+        const content = input.content as string;
+        const written = await writeFile(filePath, content);
+        return `File written: ${written}`;
+      }
+
+      case "execute_code": {
+        const result = await executeCode(
+          input.code as string,
+          input.language as "python" | "javascript"
+        );
+        const parts: string[] = [];
+        if (result.stdout) parts.push(`stdout:\n${result.stdout}`);
+        if (result.stderr) parts.push(`stderr:\n${result.stderr}`);
+        if (result.results) parts.push(`output:\n${result.results}`);
+        if (result.error) parts.push(`error:\n${result.error}`);
+        return parts.length > 0 ? parts.join("\n\n") : "(no output)";
+      }
+
+      case "computer":
+      case "text_editor":
+      case "bash": {
+        return `Computer Use requires a running container. See COMPUTER_USE_SETUP.md for setup instructions.`;
       }
 
       default:
@@ -275,7 +391,8 @@ export async function callAgentWithTools(
 ): Promise<string> {
   const currentMessages = [...messages];
 
-  while (true) {
+  const MAX_ITERATIONS = 12;
+  for (let _iter = 0; _iter < MAX_ITERATIONS; _iter++) {
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: maxTokens,
@@ -300,4 +417,6 @@ export async function callAgentWithTools(
 
     currentMessages.push({ role: "user", content: toolResults });
   }
+
+  throw new Error("Max agent iterations reached without a final response.");
 }

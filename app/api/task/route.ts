@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+
+export const dynamic = "force-dynamic";
 import Anthropic from "@anthropic-ai/sdk";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { SYSTEM_PROMPTS, type AgentKey } from "@/lib/agents";
 import { TASK_AGENT_TOOLS, executeAgentTool, TOOL_LABELS } from "@/lib/agent-tools";
 import { readKnowledgeBase } from "@/lib/tools/knowledge";
+import { getUserContext, buildUserSection } from "@/lib/tools/user-context";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
@@ -13,9 +16,9 @@ const MAX_ITERATIONS = 12;
 const TASK_SUFFIX = `
 
 ## Autonomous task mode
-You are working on a task assigned by Michael. Work through it fully and autonomously:
+You are working on a task assigned by the user. Work through it fully and autonomously:
 - Break the task into steps and execute each one using your tools
-- Think out loud before each tool call so Michael can follow your reasoning
+- Think out loud before each tool call so the user can follow your reasoning
 - Produce REAL deliverables — documents, spreadsheets, drafts — not just advice
 - Do not ask for permission between steps (except SSH commands which auto-pause for confirmation)
 - When done, start your final message with "TASK COMPLETE:" and summarize what you built with all links
@@ -48,11 +51,17 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { agentKey, taskDescription } = await req.json() as {
-    agentKey: AgentKey;
-    taskDescription: string;
-  };
-
+  let agentKey: AgentKey, taskDescription: string;
+  try {
+    ({ agentKey, taskDescription } = await req.json() as {
+      agentKey: AgentKey;
+      taskDescription: string;
+    });
+  } catch {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+  if (!taskDescription || typeof taskDescription !== "string" || taskDescription.length > 32000)
+    return NextResponse.json({ error: "Invalid task description" }, { status: 400 });
   if (!SYSTEM_PROMPTS[agentKey]) {
     return NextResponse.json({ error: "Invalid agent" }, { status: 400 });
   }
@@ -74,10 +83,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Failed to create task" }, { status: 500 });
   }
 
-  const knowledgeBase = await readKnowledgeBase();
+  const [knowledgeBase, userContext] = await Promise.all([
+    readKnowledgeBase(),
+    getUserContext(supabase, user.id),
+  ]);
+  const userSection = buildUserSection(userContext, user.email ?? "");
   const systemPrompt = [
     SYSTEM_PROMPTS[agentKey],
-    knowledgeBase ? `---\n## LineSkip Knowledge Base\n${knowledgeBase}\n---` : "",
+    knowledgeBase ? `---\n## Knowledge Base\n${knowledgeBase}\n---` : "",
+    userSection,
     TASK_SUFFIX,
   ].filter(Boolean).join("\n\n");
 
@@ -91,12 +105,19 @@ export async function POST(req: NextRequest) {
       const send = (event: object) =>
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
 
-      const addStep = async (step: Omit<TaskStep, "timestamp">) => {
+      const persist = () => {
+        supabase
+          .from("tasks")
+          .update({ steps: allSteps, updated_at: new Date().toISOString() })
+          .eq("id", task.id)
+          .then(() => {}, () => {}); // fire-and-forget — never kill the task over a DB write
+      };
+
+      const addStep = (step: Omit<TaskStep, "timestamp">) => {
         const s: TaskStep = { ...step, timestamp: new Date().toISOString() };
         allSteps.push(s);
         send({ type: "step", data: s });
-        // Persist steps incrementally
-        await supabase.from("tasks").update({ steps: allSteps, updated_at: new Date().toISOString() }).eq("id", task.id);
+        persist();
       };
 
       try {
@@ -107,11 +128,11 @@ export async function POST(req: NextRequest) {
         ];
 
         for (let i = 0; i < MAX_ITERATIONS; i++) {
-          await addStep({ type: "thinking", label: "Thinking..." });
+          addStep({ type: "thinking", label: "Thinking..." });
 
           const response = await anthropic.messages.create({
             model: "claude-sonnet-4-6",
-            max_tokens: 2048,
+            max_tokens: 8192,
             system: systemPrompt,
             messages,
             ...(tools.length > 0 ? { tools } : {}),
@@ -125,21 +146,19 @@ export async function POST(req: NextRequest) {
             .trim();
 
           if (textContent) {
-            await addStep({ type: "reasoning", label: "Reasoning", text: textContent });
+            addStep({ type: "reasoning", label: "Reasoning", text: textContent });
           }
 
           if (response.stop_reason !== "tool_use") {
             // Task complete
-            await addStep({ type: "done", label: "Task complete", text: textContent });
+            addStep({ type: "done", label: "Task complete", text: textContent });
             send({ type: "complete", result: textContent, task_id: task.id });
-
-            await supabase.from("tasks").update({
+            supabase.from("tasks").update({
               status: "done",
               result: textContent,
               steps: allSteps,
               updated_at: new Date().toISOString(),
-            }).eq("id", task.id);
-
+            }).eq("id", task.id).eq("status", "running").then(() => {}, () => {});
             controller.close();
             return;
           }
@@ -171,18 +190,18 @@ export async function POST(req: NextRequest) {
                 updated_at: new Date().toISOString(),
               }).eq("id", task.id);
 
-              await addStep({ type: "confirm_required", label: "SSH confirmation required", command });
+              addStep({ type: "confirm_required", label: "SSH confirmation required", command });
               send({ type: "confirm_ssh", task_id: task.id, command, reason });
               controller.close();
               return;
             }
 
             const label = TOOL_LABELS[tu.name] ?? tu.name;
-            await addStep({ type: "tool_call", label, tool: tu.name });
+            addStep({ type: "tool_call", label, tool: tu.name });
 
             const result = await executeAgentTool(tu.name, tu.input as Record<string, unknown>);
 
-            await addStep({
+            addStep({
               type: "tool_result",
               label: `${tu.name} complete`,
               tool: tu.name,
@@ -197,21 +216,20 @@ export async function POST(req: NextRequest) {
 
         // Hit max iterations
         send({ type: "error", message: "Task reached maximum steps without completing." });
-        await supabase.from("tasks").update({
+        supabase.from("tasks").update({
           status: "failed",
           error: "Max iterations reached",
           steps: allSteps,
-        }).eq("id", task.id);
-
+        }).eq("id", task.id).then(() => {}, () => {});
         controller.close();
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        send({ type: "error", message: msg });
-        await supabase.from("tasks").update({
+        send({ type: "error", message: msg || "An unexpected error occurred" });
+        supabase.from("tasks").update({
           status: "failed",
           error: msg,
           steps: allSteps,
-        }).eq("id", task.id);
+        }).eq("id", task.id).then(() => {}, () => {});
         controller.close();
       }
     },

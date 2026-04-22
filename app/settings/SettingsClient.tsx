@@ -4,11 +4,13 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import FeedbackModal from "@/components/chat/FeedbackModal";
 
 interface Profile {
   full_name: string;
   company_name: string;
   role_title: string;
+  user_context: string;
 }
 
 export default function SettingsPage() {
@@ -16,14 +18,16 @@ export default function SettingsPage() {
   const supabase = createClient();
   const [profile, setProfile] = useState<Profile>({
     full_name: "",
-    company_name: "LineSkip",
-    role_title: "Founder & CEO",
+    company_name: "",
+    role_title: "",
+    user_context: "",
   });
   const [email, setEmail] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [messageCount, setMessageCount] = useState(0);
   const [toast, setToast] = useState("");
+  const [showFeedback, setShowFeedback] = useState(false);
 
   useEffect(() => {
     loadProfile();
@@ -37,13 +41,20 @@ export default function SettingsPage() {
 
     const { data } = await supabase
       .from("profiles")
-      .select("full_name, company_name, role_title")
+      .select("*")
       .eq("id", user.id)
       .single();
 
-    if (data) setProfile(data);
+    if (data) {
+      const d = data as Record<string, unknown>;
+      setProfile({
+        full_name: (d.full_name as string) ?? "",
+        company_name: (d.company_name as string) ?? "",
+        role_title: (d.role_title as string) ?? "",
+        user_context: (d.user_context as string) ?? "",
+      });
+    }
 
-    // Count messages this month
     const startOfMonth = new Date();
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
@@ -60,15 +71,19 @@ export default function SettingsPage() {
   async function saveProfile() {
     setSaving(true);
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) { setSaving(false); return; }
 
-    await supabase
+    const { error } = await supabase
       .from("profiles")
       .upsert({ id: user.id, ...profile, updated_at: new Date().toISOString() });
 
     setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    if (!error) {
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } else {
+      showToast("Save failed — check Supabase schema");
+    }
   }
 
   async function handleSignOut() {
@@ -114,7 +129,7 @@ export default function SettingsPage() {
                   value={profile.full_name}
                   onChange={(e) => setProfile({ ...profile, full_name: e.target.value })}
                   className="w-full text-sm text-apple-gray-950 bg-transparent focus:outline-none"
-                  placeholder="Michael Batty"
+                  placeholder="Your name"
                 />
               </div>
               <div className="px-4 py-3">
@@ -124,7 +139,7 @@ export default function SettingsPage() {
                   value={profile.company_name}
                   onChange={(e) => setProfile({ ...profile, company_name: e.target.value })}
                   className="w-full text-sm text-apple-gray-950 bg-transparent focus:outline-none"
-                  placeholder="LineSkip"
+                  placeholder="Your company"
                 />
               </div>
               <div className="px-4 py-3">
@@ -134,11 +149,46 @@ export default function SettingsPage() {
                   value={profile.role_title}
                   onChange={(e) => setProfile({ ...profile, role_title: e.target.value })}
                   className="w-full text-sm text-apple-gray-950 bg-transparent focus:outline-none"
-                  placeholder="Founder & CEO"
+                  placeholder="Your role"
                 />
               </div>
             </div>
             <div className="px-4 py-3 border-t border-apple-gray-100">
+              <button
+                onClick={saveProfile}
+                disabled={saving}
+                className="px-4 py-2 bg-apple-gray-950 text-white text-sm font-medium rounded-apple-md hover:bg-apple-gray-800 disabled:opacity-50 transition-all"
+              >
+                {saved ? "Saved ✓" : saving ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* Agent Memory */}
+        <section>
+          <h2 className="text-xs font-semibold text-apple-gray-500 uppercase tracking-wider px-1 mb-1">
+            Agent Memory
+          </h2>
+          <p className="text-xs text-apple-gray-400 px-1 mb-2">
+            Everything here is injected into every agent's context on every message. Use it to describe your company, product, goals, strategy — anything the agents should always know.
+          </p>
+          <div className="bg-white rounded-apple-xl shadow-apple-sm overflow-hidden">
+            <div className="px-4 py-3">
+              <textarea
+                value={profile.user_context}
+                onChange={(e) => setProfile({ ...profile, user_context: e.target.value })}
+                placeholder={`Example:\n## About My Company\nWe're building X, a Y for Z. Currently in [stage].\n\n## My Goals\n- Ship v1 by [date]\n- Land first paying customer\n\n## Key People\n- [Name]: [role]\n\n## Context Agents Should Know\n[Anything else relevant]`}
+                rows={12}
+                className="w-full text-sm text-apple-gray-700 bg-transparent focus:outline-none resize-none leading-relaxed placeholder:text-apple-gray-300"
+              />
+            </div>
+            <div className="px-4 py-3 border-t border-apple-gray-100 flex items-center justify-between">
+              <span className="text-xs text-apple-gray-400">
+                {profile.user_context.length > 0
+                  ? `${profile.user_context.length.toLocaleString()} chars`
+                  : "Empty — agents will use their default context"}
+              </span>
               <button
                 onClick={saveProfile}
                 disabled={saving}
@@ -223,8 +273,17 @@ export default function SettingsPage() {
               </svg>
             </button>
             <button
+              onClick={() => setShowFeedback(true)}
+              className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-apple-gray-50 transition-colors text-left"
+            >
+              <span className="text-sm text-apple-gray-700">Give Feedback</span>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-apple-gray-400">
+                <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <button
               onClick={handleSignOut}
-              className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-red-50 transition-colors text-left group"
+              className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-red-50 transition-colors text-left"
             >
               <span className="text-sm text-red-500">Sign Out</span>
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-red-400">
@@ -241,6 +300,8 @@ export default function SettingsPage() {
           {toast}
         </div>
       )}
+
+      {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
     </div>
   );
 }

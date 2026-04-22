@@ -31,7 +31,7 @@ export default function SignupPage() {
       setError(error.message);
       setLoading(false);
     } else {
-      router.push("/chat");
+      router.push("/onboarding");
       router.refresh();
     }
   }
@@ -44,8 +44,7 @@ export default function SignupPage() {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-apple-xl bg-apple-gray-950 mb-4 shadow-apple-md">
             <span className="text-white font-semibold text-xl tracking-tight">L</span>
           </div>
-          <h1 className="text-2xl font-semibold text-apple-gray-950 tracking-tight">LineSkip</h1>
-          <p className="text-sm text-apple-gray-500 mt-1">Virtual Team</p>
+          <h1 className="text-2xl font-semibold text-apple-gray-950 tracking-tight">Kenetic</h1>
         </div>
 
         {/* Card */}
@@ -64,7 +63,7 @@ export default function SignupPage() {
                 required
                 autoComplete="name"
                 className="w-full px-3.5 py-2.5 rounded-apple-md border border-apple-gray-200 text-sm text-apple-gray-950 placeholder:text-apple-gray-400 focus:outline-none focus:ring-2 focus:ring-apple-gray-950 focus:border-transparent transition-all"
-                placeholder="Michael Batty"
+                placeholder="Your name"
               />
             </div>
 

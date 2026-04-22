@@ -5,12 +5,15 @@ import { cookies } from "next/headers";
 import { SYSTEM_PROMPTS, type AgentKey } from "@/lib/agents";
 import { readKnowledgeBase } from "@/lib/tools/knowledge";
 import { AGENT_TOOLS, callAgentWithTools, executeAgentTool, TOOL_LABELS } from "@/lib/agent-tools";
+import { getUserContext, buildUserSection } from "@/lib/tools/user-context";
+
+export const dynamic = "force-dynamic";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
 const BOARDROOM_AGENTS: AgentKey[] = ["jeremy", "kai", "dana", "marcus"];
 
-const ORCHESTRATION_CLASSIFIER = `You are Alex, Chief of Staff at LineSkip.
+const ORCHESTRATION_CLASSIFIER = `You are Alex, Chief of Staff.
 
 Your job: classify each user message as one of two modes.
 
@@ -20,7 +23,7 @@ Respond ONLY with a JSON object, no other text:
 
 Be conservative with ORCHESTRATE — only use it when the task truly needs multiple specialists. Simple questions, quick advice, single-domain questions = DIRECT_ANSWER.`;
 
-const CLARIFICATION_SYSTEM = `You are Alex, Chief of Staff at LineSkip. You are about to orchestrate the team on a complex task.
+const CLARIFICATION_SYSTEM = `You are Alex, Chief of Staff. You are about to orchestrate the team on a complex task.
 
 Ask exactly 2-3 focused clarifying questions to fully understand what's needed before briefing the team. Be direct and specific. No filler. Number the questions.
 
@@ -49,7 +52,16 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { message, conversationId, mode } = await req.json();
+  let message: string, conversationId: string, mode: string | undefined;
+  try {
+    ({ message, conversationId, mode } = await req.json());
+  } catch {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+  if (!message || typeof message !== "string" || message.length > 32000)
+    return NextResponse.json({ error: "Invalid message" }, { status: 400 });
+  if (!conversationId || typeof conversationId !== "string")
+    return NextResponse.json({ error: "Invalid conversationId" }, { status: 400 });
 
   // Load conversation history
   const { data: history } = await supabase
@@ -64,10 +76,15 @@ export async function POST(req: NextRequest) {
     .filter((m) => m.role === "user" || m.role === "assistant")
     .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
 
-  const knowledgeBase = await readKnowledgeBase();
-  const knowledgeSection = knowledgeBase
-    ? `\n\n---\n## LineSkip Knowledge Base (live)\n${knowledgeBase}\n---`
-    : "";
+  const [knowledgeBase, userContext] = await Promise.all([
+    readKnowledgeBase(),
+    getUserContext(supabase, user.id),
+  ]);
+  const userSection = buildUserSection(userContext, user.email ?? "");
+  const knowledgeSection = [
+    knowledgeBase ? `\n\n---\n## Knowledge Base (live)\n${knowledgeBase}\n---` : "",
+    userSection,
+  ].join("");
 
   // Step 1: Classify intent (if not already in orchestration mode)
   if (!mode || mode === "classify") {
@@ -100,7 +117,8 @@ export async function POST(req: NextRequest) {
               { role: "user", content: message },
             ];
 
-            while (true) {
+            const MAX_ALEX_ITERATIONS = 8;
+            for (let _iter = 0; _iter < MAX_ALEX_ITERATIONS; _iter++) {
               const apiStream = anthropic.messages.stream({
                 model: "claude-sonnet-4-6",
                 max_tokens: 1024,
@@ -135,8 +153,8 @@ export async function POST(req: NextRequest) {
 
             send({ type: "done" });
             controller.close();
-          } catch {
-            send({ type: "error" });
+          } catch (err) {
+            send({ type: "error", message: err instanceof Error ? err.message : "Stream error" });
             controller.close();
           }
         },
@@ -175,8 +193,9 @@ export async function POST(req: NextRequest) {
 
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "done" })}\n\n`));
           controller.close();
-        } catch {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "error" })}\n\n`));
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Stream error";
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "error", message: msg })}\n\n`));
           controller.close();
         }
       },
@@ -214,15 +233,18 @@ Alex has briefed the team on this task: "${taskSummary}"
 Provide your specialist perspective. Be specific, actionable, and concise. Stay in your lane. This will be included in a final synthesis document.`;
 
             const tools = AGENT_TOOLS[agentKey] ?? [];
-            const content = await callAgentWithTools(
-              agentBrief,
-              [...historyMessages, { role: "user", content: `Task brief from Alex: ${taskSummary}` }],
-              tools,
-              anthropic,
-              1024
-            );
-
-            agentResponses[agentKey] = content;
+            try {
+              const content = await callAgentWithTools(
+                agentBrief,
+                [...historyMessages, { role: "user", content: `Task brief from Alex: ${taskSummary}` }],
+                tools,
+                anthropic,
+                1024
+              );
+              agentResponses[agentKey] = content;
+            } catch {
+              agentResponses[agentKey] = "[No response — agent encountered an error]";
+            }
             send({ type: "agent_done", agentKey, name: capitalize(agentKey) });
           });
 
@@ -237,7 +259,7 @@ Provide your specialist perspective. Be specific, actionable, and concise. Stay 
             day: "numeric",
           });
 
-          const synthesisPrompt = `You are Alex, Chief of Staff at LineSkip. Synthesize the team's input into a clean, structured final output.
+          const synthesisPrompt = `You are Alex, Chief of Staff. Synthesize the team's input into a clean, structured final output.
 
 TASK: ${taskSummary}
 DATE: ${today}
@@ -279,7 +301,7 @@ Keep each section tight. No fluff.`;
 
           const synthesisResponse = await anthropic.messages.create({
             model: "claude-sonnet-4-6",
-            max_tokens: 2048,
+            max_tokens: 4096,
             system: SYSTEM_PROMPTS.alex + knowledgeSection,
             messages: [{ role: "user", content: synthesisPrompt }],
           });
@@ -290,8 +312,9 @@ Keep each section tight. No fluff.`;
 
           send({ type: "synthesis_complete", content: finalOutput, taskSummary });
           controller.close();
-        } catch {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "error" })}\n\n`));
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Stream error";
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "error", message: msg })}\n\n`));
           controller.close();
         }
       },

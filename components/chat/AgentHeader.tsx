@@ -11,7 +11,7 @@ export default function AgentHeader({ agentKey }: { agentKey: AgentKey | "boardr
       {/* Avatar */}
       <div
         className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0"
-        style={{ background: isBoardroom ? "#48484A" : agent?.accent }}
+        style={{ background: isBoardroom ? "#48484A" : (agent?.accent ?? "#48484A") }}
       >
         {isBoardroom ? (
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">

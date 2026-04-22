@@ -1,8 +1,8 @@
 import { Client } from "ssh2";
 import type { ConnectConfig } from "ssh2";
 
-const PI_HOST = "192.168.68.92";
-const PI_USER = "lineskippoc";
+const PI_HOST = process.env.SSH_PI_HOST ?? "";
+const PI_USER = process.env.SSH_PI_USER ?? "";
 const TIMEOUT_MS = 30_000;
 
 export async function runSSHCommand(command: string): Promise<string> {

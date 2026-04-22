@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "LineSkip Virtual Team",
-  description: "Your AI-powered virtual team for LineSkip",
+  title: "Kenetic",
+  description: "Your AI-powered virtual team",
 };
 
 export default function RootLayout({

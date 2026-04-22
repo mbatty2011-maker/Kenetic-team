@@ -11,7 +11,7 @@ export async function sendEmail({ to, subject, body }: EmailOptions) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
   const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
-  const from = process.env.GMAIL_FROM_ADDRESS || "mbatty2011@gmail.com";
+  const from = process.env.GMAIL_FROM_ADDRESS || "";
 
   if (!clientId || !clientSecret || !refreshToken) {
     throw new Error("Gmail credentials not configured");
@@ -36,7 +36,7 @@ export async function sendEmail({ to, subject, body }: EmailOptions) {
 
   // Build RFC 2822 email message
   const emailLines = [
-    `From: LineSkip Virtual Team <${from}>`,
+    `From: Kenetic <${from}>`,
     `To: ${to}`,
     `Subject: ${subject}`,
     `Content-Type: text/plain; charset=utf-8`,
@@ -72,7 +72,7 @@ export async function draftEmail({ to, subject, body }: EmailOptions) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
   const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
-  const from = process.env.GMAIL_FROM_ADDRESS || "mbatty2011@gmail.com";
+  const from = process.env.GMAIL_FROM_ADDRESS || "";
 
   if (!clientId || !clientSecret || !refreshToken) {
     throw new Error("Gmail credentials not configured");
@@ -95,7 +95,7 @@ export async function draftEmail({ to, subject, body }: EmailOptions) {
   }
 
   const emailLines = [
-    `From: LineSkip Virtual Team <${from}>`,
+    `From: Kenetic <${from}>`,
     `To: ${to}`,
     `Subject: ${subject}`,
     `Content-Type: text/plain; charset=utf-8`,

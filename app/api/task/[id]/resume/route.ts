@@ -5,8 +5,11 @@ import { cookies } from "next/headers";
 import { SYSTEM_PROMPTS } from "@/lib/agents";
 import { TASK_AGENT_TOOLS, executeAgentTool, TOOL_LABELS } from "@/lib/agent-tools";
 import { readKnowledgeBase } from "@/lib/tools/knowledge";
+import { getUserContext, buildUserSection } from "@/lib/tools/user-context";
 import { runSSHCommand } from "@/lib/tools/ssh";
 import type { TaskStep } from "@/app/api/task/route";
+
+export const dynamic = "force-dynamic";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 const MAX_ITERATIONS = 10;
@@ -39,7 +42,12 @@ export async function POST(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { confirmed } = await req.json() as { confirmed: boolean };
+  let confirmed: boolean;
+  try {
+    ({ confirmed } = await req.json() as { confirmed: boolean });
+  } catch {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
 
   const { data: task } = await supabase
     .from("tasks")
@@ -54,12 +62,16 @@ export async function POST(
   }
 
   if (!confirmed) {
-    await supabase.from("tasks").update({
+    supabase.from("tasks").update({
       status: "failed",
       error: "SSH command cancelled by user",
       updated_at: new Date().toISOString(),
-    }).eq("id", taskId);
+    }).eq("id", taskId).then(() => {}, () => {});
     return NextResponse.json({ cancelled: true });
+  }
+
+  if (!task.pending_ssh) {
+    return NextResponse.json({ error: "No pending SSH command found" }, { status: 400 });
   }
 
   const { command, tool_use_id, messages: messagesJSON } = task.pending_ssh;
@@ -72,18 +84,24 @@ export async function POST(
       const send = (event: object) =>
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
 
-      const addStep = async (step: Omit<TaskStep, "timestamp">) => {
+      const persist = () => {
+        supabase.from("tasks").update({ steps: allSteps, updated_at: new Date().toISOString() })
+          .eq("id", taskId).then(() => {}, () => {});
+      };
+
+      const addStep = (step: Omit<TaskStep, "timestamp">) => {
         const s: TaskStep = { ...step, timestamp: new Date().toISOString() };
         allSteps.push(s);
         send({ type: "step", data: s });
-        await supabase.from("tasks").update({ steps: allSteps, updated_at: new Date().toISOString() }).eq("id", taskId);
+        persist();
       };
 
       try {
-        await supabase.from("tasks").update({ status: "running", pending_ssh: null }).eq("id", taskId);
+        supabase.from("tasks").update({ status: "running", pending_ssh: null })
+          .eq("id", taskId).then(() => {}, () => {});
         send({ type: "resumed" });
 
-        await addStep({ type: "tool_call", label: "Running SSH command...", tool: "run_ssh_command", command });
+        addStep({ type: "tool_call", label: "Running SSH command...", tool: "run_ssh_command", command });
 
         let sshResult: string;
         try {
@@ -92,30 +110,45 @@ export async function POST(
           sshResult = `SSH error: ${err instanceof Error ? err.message : String(err)}`;
         }
 
-        await addStep({ type: "tool_result", label: "SSH result", tool: "run_ssh_command", text: sshResult.slice(0, 300) });
+        addStep({ type: "tool_result", label: "SSH result", tool: "run_ssh_command", text: sshResult.slice(0, 300) });
 
         // Rebuild messages from snapshot
-        const messages: Anthropic.MessageParam[] = JSON.parse(messagesJSON);
+        let messages: Anthropic.MessageParam[];
+        try {
+          messages = JSON.parse(messagesJSON);
+        } catch {
+          send({ type: "error", message: "Failed to restore task state" });
+          supabase.from("tasks").update({ status: "failed", error: "Invalid message snapshot", steps: allSteps })
+            .eq("id", taskId).then(() => {}, () => {});
+          controller.close();
+          return;
+        }
+
         messages.push({
           role: "user",
           content: [{ type: "tool_result", tool_use_id, content: sshResult }],
         });
 
-        const knowledgeBase = await readKnowledgeBase();
+        const [knowledgeBase, userContext] = await Promise.all([
+          readKnowledgeBase(),
+          getUserContext(supabase, user.id),
+        ]);
+        const userSection = buildUserSection(userContext, user.email ?? "");
         const systemPrompt = [
           SYSTEM_PROMPTS[task.agent_key as keyof typeof SYSTEM_PROMPTS],
-          knowledgeBase ? `---\n## LineSkip Knowledge Base\n${knowledgeBase}\n---` : "",
+          knowledgeBase ? `---\n## Knowledge Base\n${knowledgeBase}\n---` : "",
+          userSection,
           TASK_SUFFIX,
         ].filter(Boolean).join("\n\n");
 
         const tools = TASK_AGENT_TOOLS[task.agent_key as keyof typeof TASK_AGENT_TOOLS] ?? [];
 
         for (let i = 0; i < MAX_ITERATIONS; i++) {
-          await addStep({ type: "thinking", label: "Thinking..." });
+          addStep({ type: "thinking", label: "Thinking..." });
 
           const response = await anthropic.messages.create({
             model: "claude-sonnet-4-6",
-            max_tokens: 2048,
+            max_tokens: 8192,
             system: systemPrompt,
             messages,
             ...(tools.length > 0 ? { tools } : {}),
@@ -128,20 +161,18 @@ export async function POST(
             .trim();
 
           if (textContent) {
-            await addStep({ type: "reasoning", label: "Reasoning", text: textContent });
+            addStep({ type: "reasoning", label: "Reasoning", text: textContent });
           }
 
           if (response.stop_reason !== "tool_use") {
-            await addStep({ type: "done", label: "Task complete", text: textContent });
+            addStep({ type: "done", label: "Task complete", text: textContent });
             send({ type: "complete", result: textContent, task_id: taskId });
-
-            await supabase.from("tasks").update({
+            supabase.from("tasks").update({
               status: "done",
               result: textContent,
               steps: allSteps,
               updated_at: new Date().toISOString(),
-            }).eq("id", taskId);
-
+            }).eq("id", taskId).then(() => {}, () => {});
             controller.close();
             return;
           }
@@ -170,18 +201,18 @@ export async function POST(
                 updated_at: new Date().toISOString(),
               }).eq("id", taskId);
 
-              await addStep({ type: "confirm_required", label: "SSH confirmation required", command: cmd });
+              addStep({ type: "confirm_required", label: "SSH confirmation required", command: cmd });
               send({ type: "confirm_ssh", task_id: taskId, command: cmd, reason });
               controller.close();
               return;
             }
 
             const label = TOOL_LABELS[tu.name] ?? tu.name;
-            await addStep({ type: "tool_call", label, tool: tu.name });
+            addStep({ type: "tool_call", label, tool: tu.name });
 
             const result = await executeAgentTool(tu.name, tu.input as Record<string, unknown>);
 
-            await addStep({ type: "tool_result", label: `${tu.name} complete`, tool: tu.name, text: result.slice(0, 300) });
+            addStep({ type: "tool_result", label: `${tu.name} complete`, tool: tu.name, text: result.slice(0, 300) });
             toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: result });
           }
 
@@ -189,12 +220,14 @@ export async function POST(
         }
 
         send({ type: "error", message: "Task reached maximum steps." });
-        await supabase.from("tasks").update({ status: "failed", error: "Max iterations", steps: allSteps }).eq("id", taskId);
+        supabase.from("tasks").update({ status: "failed", error: "Max iterations", steps: allSteps })
+          .eq("id", taskId).then(() => {}, () => {});
         controller.close();
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         send({ type: "error", message: msg });
-        await supabase.from("tasks").update({ status: "failed", error: msg, steps: allSteps }).eq("id", taskId);
+        supabase.from("tasks").update({ status: "failed", error: msg, steps: allSteps })
+          .eq("id", taskId).then(() => {}, () => {});
         controller.close();
       }
     },

@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+
+export const dynamic = "force-dynamic";
 import Anthropic from "@anthropic-ai/sdk";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
@@ -6,6 +8,7 @@ import { SYSTEM_PROMPTS, type AgentKey } from "@/lib/agents";
 import { tavilySearch, formatSearchResults } from "@/lib/tools/search";
 import { readKnowledgeBase } from "@/lib/tools/knowledge";
 import { AGENT_TOOLS, executeAgentTool, TOOL_LABELS } from "@/lib/agent-tools";
+import { getUserContext, buildUserSection } from "@/lib/tools/user-context";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
@@ -31,12 +34,20 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { agentKey, message, conversationId } = await req.json() as {
-    agentKey: AgentKey;
-    message: string;
-    conversationId: string;
-  };
-
+  let agentKey: AgentKey, message: string, conversationId: string;
+  try {
+    ({ agentKey, message, conversationId } = await req.json() as {
+      agentKey: AgentKey;
+      message: string;
+      conversationId: string;
+    });
+  } catch {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+  if (!message || typeof message !== "string" || message.length > 32000)
+    return NextResponse.json({ error: "Invalid message" }, { status: 400 });
+  if (!conversationId || typeof conversationId !== "string")
+    return NextResponse.json({ error: "Invalid conversationId" }, { status: 400 });
   if (!SYSTEM_PROMPTS[agentKey]) {
     return NextResponse.json({ error: "Invalid agent" }, { status: 400 });
   }
@@ -44,8 +55,8 @@ export async function POST(req: NextRequest) {
   const agentTools = AGENT_TOOLS[agentKey] ?? [];
   const hasSearchTool = agentTools.some((t) => t.name === "web_search");
 
-  // Load conversation history and knowledge base in parallel
-  const [historyResult, knowledgeBase] = await Promise.all([
+  // Load conversation history, knowledge base, and user context in parallel
+  const [historyResult, knowledgeBase, userContext] = await Promise.all([
     supabase
       .from("messages")
       .select("role, content")
@@ -53,6 +64,7 @@ export async function POST(req: NextRequest) {
       .order("created_at", { ascending: false })
       .limit(20),
     readKnowledgeBase(),
+    getUserContext(supabase, user.id),
   ]);
 
   const historyMessages = (historyResult.data ?? [])
@@ -81,10 +93,12 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  const userSection = buildUserSection(userContext, user.email ?? "");
   const systemPrompt = [
     SYSTEM_PROMPTS[agentKey],
-    knowledgeBase ? `---\n## LineSkip Knowledge Base (live)\n${knowledgeBase}\n---` : "",
+    knowledgeBase ? `---\n## Knowledge Base (live)\n${knowledgeBase}\n---` : "",
     searchContext ? `---\n## Web Search Results\n${searchContext}\n---` : "",
+    userSection,
   ].filter(Boolean).join("\n\n");
 
   const initialMessages: Anthropic.MessageParam[] = [
@@ -93,6 +107,9 @@ export async function POST(req: NextRequest) {
   ];
 
   const encoder = new TextEncoder();
+
+  const MAX_CHAT_ITERATIONS = 8;
+  const MAX_TOKENS = 8192;
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -105,14 +122,16 @@ export async function POST(req: NextRequest) {
         const currentMessages = [...initialMessages];
 
         // Agentic loop — handles tool use transparently
-        while (true) {
-          const apiStream = anthropic.messages.stream({
-            model: "claude-sonnet-4-6",
-            max_tokens: 2048,
+        let iterationExhausted = true;
+        for (let _iter = 0; _iter < MAX_CHAT_ITERATIONS; _iter++) {
+          const streamParams = {
+            model: "claude-sonnet-4-6" as const,
+            max_tokens: MAX_TOKENS,
             system: systemPrompt,
             messages: currentMessages,
             ...(agentTools.length > 0 ? { tools: agentTools } : {}),
-          });
+          };
+          const apiStream = anthropic.messages.stream(streamParams);
 
           for await (const event of apiStream) {
             if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
@@ -121,7 +140,7 @@ export async function POST(req: NextRequest) {
           }
 
           const finalMsg = await apiStream.finalMessage();
-          if (finalMsg.stop_reason !== "tool_use") break;
+          if (finalMsg.stop_reason !== "tool_use") { iterationExhausted = false; break; }
 
           // Execute tool calls
           const toolUses = finalMsg.content.filter(
@@ -139,10 +158,14 @@ export async function POST(req: NextRequest) {
           currentMessages.push({ role: "user", content: toolResults });
         }
 
+        if (iterationExhausted) {
+          send({ error: "Max tool iterations reached without a final response." });
+        }
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
-      } catch {
-        send({ error: "Stream error" });
+      } catch (err) {
+        send({ error: err instanceof Error ? err.message : "Stream error" });
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
       }
     },

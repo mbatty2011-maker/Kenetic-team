@@ -110,17 +110,42 @@ export default function MarkdownContent({ content }: { content: string }) {
 
     // Code block
     if (line.startsWith("```")) {
+      const meta = line.slice(3).trim(); // e.g. "tsx app/landing/page.tsx" or "python"
+      const metaParts = meta.split(/\s+/);
+      const lang = metaParts[0] || "txt";
+      const filename = metaParts[1] || null;
       const codeLines: string[] = [];
       i++;
       while (i < lines.length && !lines[i].startsWith("```")) {
         codeLines.push(lines[i]);
         i++;
       }
-      i++; // skip closing ```
+      if (i < lines.length) i++; // skip closing ``` only if it exists
+      const codeText = codeLines.join("\n");
+      const downloadName = filename ?? `code.${lang}`;
       elements.push(
-        <pre key={`code-${i}`} className="bg-apple-gray-100 rounded-apple-md px-3 py-2.5 my-2 overflow-x-auto">
-          <code className="text-xs font-mono text-apple-gray-800">{codeLines.join("\n")}</code>
-        </pre>
+        <div key={`code-${i}`} className="my-2 rounded-apple-md overflow-hidden border border-apple-gray-200">
+          <div className="flex items-center justify-between bg-apple-gray-100 px-3 py-1.5">
+            <span className="text-xs font-mono text-apple-gray-500">{filename ?? lang}</span>
+            <button
+              onClick={() => {
+                const blob = new Blob([codeText], { type: "text/plain" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = downloadName;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+            >
+              Download
+            </button>
+          </div>
+          <pre className="bg-white px-3 py-2.5 overflow-x-auto">
+            <code className="text-xs font-mono text-apple-gray-800">{codeText}</code>
+          </pre>
+        </div>
       );
       continue;
     }

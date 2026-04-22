@@ -29,14 +29,22 @@ export default function AlexChatWindow() {
   const router = useRouter();
   const supabase = createClient();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const isNewConvoRef = useRef(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
-  // null = normal mode, string = Alex asked clarifying Qs, next reply triggers orchestration
   const [pendingOrchestrationTask, setPendingOrchestrationTask] = useState<string | null>(null);
   const [synthesis, setSynthesis] = useState<SynthesisData | null>(null);
+  const [userEmail, setUserEmail] = useState("");
 
   const alex = AGENTS.find((a) => a.key === "alex")!;
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user?.email) setUserEmail(user.email);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const cid = searchParams.get("cid");
@@ -58,7 +66,7 @@ export default function AlexChatWindow() {
       .select("*")
       .eq("conversation_id", cid)
       .order("created_at", { ascending: true });
-    if (data) setMessages(data as Message[]);
+    if (data && searchParams.get("cid") === cid) setMessages(data as Message[]);
   }
 
   useEffect(() => {
@@ -97,6 +105,7 @@ export default function AlexChatWindow() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    isNewConvoRef.current = !conversationId;
     const cid = await ensureConversation(content);
 
     const userMsg: Message = {
@@ -193,6 +202,11 @@ export default function AlexChatWindow() {
         await saveMessage(cid, uid, "assistant", fullContent);
       }
 
+      if (isNewConvoRef.current) {
+        isNewConvoRef.current = false;
+        fetch(`/api/conversation/${cid}/title`, { method: "POST" }).catch(() => {});
+      }
+
       await supabase
         .from("conversations")
         .update({ updated_at: new Date().toISOString() })
@@ -270,23 +284,14 @@ export default function AlexChatWindow() {
                     : m
                 )
               );
-              // Add a new status message for next agent
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: crypto.randomUUID(),
-                  role: "system" as const,
-                  content: `${parsed.name} responded ✓`,
-                  created_at: new Date().toISOString(),
-                },
-              ]);
             } else if (parsed.type === "synthesis_complete") {
               // Remove the running status message
               setMessages((prev) => prev.filter((m) => m.id !== statusId));
-              setSynthesis({ content: parsed.content, taskSummary: parsed.taskSummary });
+              const synthContent: string = parsed.content ?? "";
+              setSynthesis({ content: synthContent, taskSummary: parsed.taskSummary });
 
               // Save the synthesis as an assistant message
-              await saveMessage(cid, uid, "assistant", parsed.content);
+              if (synthContent) await saveMessage(cid, uid, "assistant", synthContent);
               await supabase
                 .from("conversations")
                 .update({ updated_at: new Date().toISOString() })
@@ -311,20 +316,17 @@ export default function AlexChatWindow() {
 
   async function handleConfirmSend() {
     if (!synthesis) return;
-    try {
-      const res = await fetch("/api/email/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          subject: `LineSkip Team Brief: ${synthesis.taskSummary}`,
-          body: synthesis.content,
-        }),
-      });
-
-      await res.json();
-      // Don't dismiss the card — let it show its own "sent" state so user can read the content
-    } catch {
-      // Email failed silently — card stays visible, user can still read content
+    const res = await fetch("/api/email/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        subject: `Team Brief: ${synthesis.taskSummary}`,
+        body: synthesis.content,
+      }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      throw new Error(data?.error ?? `Email send failed (${res.status})`);
     }
   }
 
@@ -364,6 +366,7 @@ export default function AlexChatWindow() {
           <SynthesisCard
             content={synthesis.content}
             taskSummary={synthesis.taskSummary}
+            userEmail={userEmail}
             onConfirmSend={handleConfirmSend}
             onCancel={handleCancelSend}
           />

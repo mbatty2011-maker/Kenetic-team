@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useState, useEffect, useRef } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { User } from "@supabase/supabase-js";
 import { AGENTS } from "@/lib/agents";
 import { createClient } from "@/lib/supabase/client";
-import NewTaskModal from "@/components/chat/NewTaskModal";
+import FeedbackModal from "@/components/chat/FeedbackModal";
 
 interface Conversation {
   id: string;
@@ -19,30 +19,64 @@ interface Conversation {
 export default function Sidebar({
   user,
   onClose,
+  onNewTask,
 }: {
   user: User;
   onClose: () => void;
+  onNewTask: () => void;
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [showNewTask, setShowNewTask] = useState(false);
   const [pendingTaskCount, setPendingTaskCount] = useState(0);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [showFeedback, setShowFeedback] = useState(false);
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
   const currentAgent = pathname.split("/")[2] || "alex";
+
+  // Auto-expand the active agent's conversation list
+  useEffect(() => {
+    if (currentAgent && currentAgent !== "tasks" && currentAgent !== "boardroom") {
+      setExpandedAgent(currentAgent);
+    }
+  }, [currentAgent]);
 
   useEffect(() => {
     loadConversations();
     loadPendingTasks();
+
+    // Real-time subscription — sidebar refreshes whenever conversations change
+    const channel = supabase
+      .channel("sidebar-conversations")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "conversations", filter: `user_id=eq.${user.id}` },
+        loadConversations
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (renamingId && renameInputRef.current) {
+      renameInputRef.current.focus();
+      renameInputRef.current.select();
+    }
+  }, [renamingId]);
 
   async function loadPendingTasks() {
     const { count } = await supabase
       .from("tasks")
       .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id)
       .in("status", ["running", "awaiting_confirmation"]);
     setPendingTaskCount(count ?? 0);
   }
@@ -59,19 +93,43 @@ export default function Sidebar({
   async function newConversation(agentKey: string) {
     const { data, error } = await supabase
       .from("conversations")
-      .insert({
-        user_id: user.id,
-        agent_key: agentKey,
-        title: null,
-      })
+      .insert({ user_id: user.id, agent_key: agentKey, title: null })
       .select()
       .single();
-
     if (!error && data) {
-      setConversations((prev) => [data, ...prev]);
       router.push(`/chat/${agentKey}?cid=${data.id}`);
       onClose();
     }
+  }
+
+  async function deleteConversation(convoId: string, agentKey: string) {
+    await supabase.from("messages").delete().eq("conversation_id", convoId);
+    await supabase.from("conversations").delete().eq("id", convoId).eq("user_id", user.id);
+    setConversations((prev) => prev.filter((c) => c.id !== convoId));
+    setDeletingId(null);
+    if (searchParams.get("cid") === convoId) {
+      router.push(`/chat/${agentKey}`);
+    }
+  }
+
+  async function renameConversation(convoId: string) {
+    const trimmed = renameValue.trim();
+    if (trimmed) {
+      await supabase
+        .from("conversations")
+        .update({ title: trimmed })
+        .eq("id", convoId)
+        .eq("user_id", user.id);
+      setConversations((prev) =>
+        prev.map((c) => (c.id === convoId ? { ...c, title: trimmed } : c))
+      );
+    }
+    setRenamingId(null);
+  }
+
+  function startRename(convo: Conversation) {
+    setRenamingId(convo.id);
+    setRenameValue(convo.title ?? "");
   }
 
   function getConversationsForAgent(agentKey: string) {
@@ -83,15 +141,10 @@ export default function Sidebar({
     const now = new Date();
     const diffMs = now.getTime() - d.getTime();
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    if (diffDays === 0) {
-      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    } else if (diffDays === 1) {
-      return "Yesterday";
-    } else if (diffDays < 7) {
-      return d.toLocaleDateString([], { weekday: "short" });
-    } else {
-      return d.toLocaleDateString([], { month: "short", day: "numeric" });
-    }
+    if (diffDays === 0) return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    if (diffDays === 1) return "Yesterday";
+    if (diffDays < 7) return d.toLocaleDateString([], { weekday: "short" });
+    return d.toLocaleDateString([], { month: "short", day: "numeric" });
   }
 
   async function handleSignOut() {
@@ -100,24 +153,17 @@ export default function Sidebar({
   }
 
   return (
-    <div
-      className="h-full flex flex-col dark-scrollbar"
-      style={{ background: "#1C1C1E" }}
-    >
+    <div className="h-full flex flex-col dark-scrollbar" style={{ background: "#1C1C1E" }}>
       {/* Logo */}
       <div className="px-4 pt-5 pb-4 flex items-center gap-3">
         <div className="w-8 h-8 rounded-apple-md bg-white/10 flex items-center justify-center flex-shrink-0">
           <span className="text-white font-semibold text-sm">L</span>
         </div>
         <div>
-          <div className="text-white font-semibold text-sm tracking-tight leading-none">
-            LineSkip
-          </div>
-          <div className="text-white/40 text-xs mt-0.5">Virtual Team</div>
+          <div className="text-white font-semibold text-sm tracking-tight leading-none">Kenetic</div>
         </div>
       </div>
 
-      {/* Divider */}
       <div className="mx-3 border-t border-white/8 mb-2" />
 
       {/* Agent list */}
@@ -129,15 +175,11 @@ export default function Sidebar({
 
           return (
             <div key={agent.key}>
-              {/* Agent row */}
               <div
-                className={`
-                  flex items-center gap-2.5 px-2 py-2 rounded-apple-md cursor-pointer
-                  transition-colors duration-200 group
-                  ${isActive ? "bg-white/12" : "hover:bg-white/6"}
-                `}
+                className={`flex items-center gap-2.5 px-2 py-2 rounded-apple-md cursor-pointer transition-colors duration-200 group ${
+                  isActive ? "bg-white/12" : "hover:bg-white/6"
+                }`}
               >
-                {/* Avatar */}
                 <Link
                   href={`/chat/${agent.key}`}
                   className="flex items-center gap-2.5 flex-1 min-w-0"
@@ -150,19 +192,13 @@ export default function Sidebar({
                     {agent.initials}
                   </div>
                   <div className="min-w-0">
-                    <div className="text-white text-sm font-medium leading-none truncate">
-                      {agent.name}
-                    </div>
+                    <div className="text-white text-sm font-medium leading-none truncate">{agent.name}</div>
                     <div className="text-white/40 text-xs mt-0.5 truncate">{agent.role}</div>
                   </div>
                 </Link>
 
-                {/* New chat button */}
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    newConversation(agent.key);
-                  }}
+                  onClick={(e) => { e.stopPropagation(); newConversation(agent.key); }}
                   className="opacity-0 group-hover:opacity-100 w-5 h-5 rounded flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-all flex-shrink-0"
                   title="New conversation"
                 >
@@ -171,7 +207,6 @@ export default function Sidebar({
                   </svg>
                 </button>
 
-                {/* Expand toggle */}
                 {agentConvos.length > 0 && (
                   <button
                     onClick={() => setExpandedAgent(isExpanded ? null : agent.key)}
@@ -190,31 +225,98 @@ export default function Sidebar({
                 )}
               </div>
 
-              {/* Conversation list */}
               {isExpanded && agentConvos.length > 0 && (
                 <div className="ml-6 mt-0.5 space-y-0.5 mb-1">
                   {agentConvos.map((convo) => {
                     const url = `/chat/${agent.key}?cid=${convo.id}`;
-                    const isActiveConvo = pathname + window.location.search === url ||
-                      (typeof window !== "undefined" && window.location.search.includes(convo.id));
+                    const isActiveConvo =
+                      pathname === `/chat/${agent.key}` && searchParams.get("cid") === convo.id;
+
+                    if (deletingId === convo.id) {
+                      return (
+                        <div
+                          key={convo.id}
+                          className="px-2 py-2 rounded-apple-md bg-red-900/20 border border-red-500/20"
+                        >
+                          <p className="text-white/70 text-xs mb-2">Delete this conversation?</p>
+                          <div className="flex gap-1.5">
+                            <button
+                              onClick={() => deleteConversation(convo.id, agent.key)}
+                              className="text-[10px] px-2 py-1 bg-red-600 text-white rounded font-medium hover:bg-red-700 transition-colors"
+                            >
+                              Delete
+                            </button>
+                            <button
+                              onClick={() => setDeletingId(null)}
+                              className="text-[10px] px-2 py-1 bg-white/10 text-white/60 rounded hover:bg-white/20 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    if (renamingId === convo.id) {
+                      return (
+                        <div key={convo.id} className="px-2 py-1">
+                          <input
+                            ref={renameInputRef}
+                            value={renameValue}
+                            onChange={(e) => setRenameValue(e.target.value)}
+                            onBlur={() => renameConversation(convo.id)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") renameConversation(convo.id);
+                              if (e.key === "Escape") setRenamingId(null);
+                            }}
+                            className="w-full text-xs bg-white/10 text-white px-2 py-1 rounded focus:outline-none focus:ring-1 focus:ring-white/30"
+                          />
+                        </div>
+                      );
+                    }
+
                     return (
-                      <Link
+                      <div
                         key={convo.id}
-                        href={url}
-                        onClick={onClose}
-                        className={`
-                          flex items-center justify-between px-2 py-1.5 rounded-apple-md
-                          transition-colors duration-200
-                          ${isActiveConvo ? "bg-white/10" : "hover:bg-white/6"}
-                        `}
+                        className={`group/convo flex items-center rounded-apple-md transition-colors duration-200 ${
+                          isActiveConvo ? "bg-white/10" : "hover:bg-white/6"
+                        }`}
                       >
-                        <span className="text-white/60 text-xs truncate flex-1 min-w-0">
-                          {convo.title || "New conversation"}
-                        </span>
-                        <span className="text-white/30 text-xs flex-shrink-0 ml-2">
-                          {formatTime(convo.updated_at)}
-                        </span>
-                      </Link>
+                        <Link
+                          href={url}
+                          onClick={onClose}
+                          className="flex items-center justify-between flex-1 min-w-0 px-2 py-1.5"
+                        >
+                          <span className="text-white/60 text-xs truncate flex-1 min-w-0">
+                            {convo.title || "New conversation"}
+                          </span>
+                          <span className="text-white/30 text-xs flex-shrink-0 ml-2 group-hover/convo:hidden">
+                            {formatTime(convo.updated_at)}
+                          </span>
+                        </Link>
+
+                        {/* Action buttons — visible on hover */}
+                        <div className="hidden group-hover/convo:flex items-center gap-0.5 pr-1.5 flex-shrink-0">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); startRename(convo); }}
+                            title="Rename"
+                            className="w-5 h-5 rounded flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+                          >
+                            <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+                              <path d="M1.5 6.5L5.5 2.5l1.5 1.5-4 4H1.5V6.5zM5 3l1.5-1.5L8 3l-1.5 1.5L5 3z" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setDeletingId(convo.id); }}
+                            title="Delete"
+                            className="w-5 h-5 rounded flex items-center justify-center text-white/40 hover:text-red-400 hover:bg-white/10 transition-colors"
+                          >
+                            <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+                              <path d="M1.5 2.5h6M3 2.5V1.5h3v1M2 2.5l.5 5h4l.5-5" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
@@ -227,9 +329,8 @@ export default function Sidebar({
         <div className="mt-2">
           <div className="mx-2 border-t border-white/8 mb-2" />
 
-          {/* New Task button */}
           <button
-            onClick={() => setShowNewTask(true)}
+            onClick={onNewTask}
             className="w-full flex items-center gap-2.5 px-2 py-2 rounded-apple-md hover:bg-white/6 transition-colors text-left"
           >
             <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
@@ -240,11 +341,12 @@ export default function Sidebar({
             <span className="text-white/70 text-sm">New Task</span>
           </button>
 
-          {/* Task history link */}
           <Link
             href="/chat/tasks"
             onClick={onClose}
-            className={`flex items-center justify-between gap-2.5 px-2 py-2 rounded-apple-md hover:bg-white/6 transition-colors ${currentAgent === "tasks" ? "bg-white/12" : ""}`}
+            className={`flex items-center justify-between gap-2.5 px-2 py-2 rounded-apple-md hover:bg-white/6 transition-colors ${
+              currentAgent === "tasks" ? "bg-white/12" : ""
+            }`}
           >
             <div className="flex items-center gap-2.5">
               <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
@@ -269,11 +371,9 @@ export default function Sidebar({
           <Link
             href="/chat/boardroom"
             onClick={onClose}
-            className={`
-              flex items-center gap-2.5 px-2 py-2 rounded-apple-md
-              transition-colors duration-200
-              ${currentAgent === "boardroom" ? "bg-white/12" : "hover:bg-white/6"}
-            `}
+            className={`flex items-center gap-2.5 px-2 py-2 rounded-apple-md transition-colors duration-200 ${
+              currentAgent === "boardroom" ? "bg-white/12" : "hover:bg-white/6"
+            }`}
           >
             <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -290,7 +390,7 @@ export default function Sidebar({
         </div>
       </div>
 
-      {/* Bottom — Settings + Sign out */}
+      {/* Bottom — Settings + Feedback + Sign out */}
       <div className="px-2 pb-4 pt-2 border-t border-white/8 mt-2 space-y-0.5">
         <Link
           href="/settings"
@@ -306,6 +406,18 @@ export default function Sidebar({
         </Link>
 
         <button
+          onClick={() => setShowFeedback(true)}
+          className="w-full flex items-center gap-2.5 px-2 py-2 rounded-apple-md hover:bg-white/6 transition-colors text-left"
+        >
+          <div className="w-7 h-7 rounded-full bg-white/8 flex items-center justify-center flex-shrink-0">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M2 2h10a1 1 0 011 1v6a1 1 0 01-1 1H8l-3 2v-2H2a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="white" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" strokeOpacity="0.6" />
+            </svg>
+          </div>
+          <span className="text-white/60 text-sm">Give Feedback</span>
+        </button>
+
+        <button
           onClick={handleSignOut}
           className="w-full flex items-center gap-2.5 px-2 py-2 rounded-apple-md hover:bg-white/6 transition-colors text-left"
         >
@@ -317,7 +429,8 @@ export default function Sidebar({
           <span className="text-white/60 text-sm">Sign out</span>
         </button>
       </div>
-      {showNewTask && <NewTaskModal onClose={() => { setShowNewTask(false); loadPendingTasks(); }} />}
+
+      {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
     </div>
   );
 }
