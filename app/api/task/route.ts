@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (taskError || !task) {
-    return NextResponse.json({ error: "Failed to create task" }, { status: 500 });
+    return NextResponse.json({ error: taskError?.message ?? "Failed to create task" }, { status: 500 });
   }
 
   const [knowledgeBase, userContext] = await Promise.all([
