@@ -19,6 +19,7 @@ const SPECIALIST_DESCRIPTIONS: Record<string, string> = {
   kai:    "Consult Kai (CTO) for technical implementation, code architecture, debugging, infrastructure, web dev, or any engineering question.",
   dana:   "Consult Dana (Head of Sales) for sales strategy, outreach copy, competitive positioning, deal structure, or partnership sequencing.",
   marcus: "Consult Marcus (General Counsel) for legal questions, contracts, IP, compliance, NDA drafting, or regulatory matters.",
+  maya:   "Consult Maya (Head of Marketing) for positioning copy, pitch narrative, one-pager copy, email outreach drafts, social post drafts, announcement copy, website copy, or any text-based marketing deliverable. Not for design, ad management, or publishing.",
 };
 
 const SPECIALIST_TOOLS: Anthropic.Tool[] = Object.entries(SPECIALIST_DESCRIPTIONS).map(
@@ -227,7 +228,7 @@ export const alexWorker = inngest.createFunction(
             ? tu.name.slice(4) // "ask_jeremy" → "jeremy"
             : null;
 
-          if (specialistKey && ["jeremy", "kai", "dana", "marcus"].includes(specialistKey)) {
+          if (specialistKey && ["jeremy", "kai", "dana", "marcus", "maya"].includes(specialistKey)) {
             const question = (input.question as string) ?? "";
             await appendStep(supabase, jobId, userId, {
               type: "specialist",
@@ -237,7 +238,7 @@ export const alexWorker = inngest.createFunction(
 
             let specialistResponse: string;
             try {
-              const agentKey = specialistKey as "jeremy" | "kai" | "dana" | "marcus";
+              const agentKey = specialistKey as "jeremy" | "kai" | "dana" | "marcus" | "maya";
               const agentBrief = `${SYSTEM_PROMPTS[agentKey]}
 
 Alex (Chief of Staff) is consulting you on this specific question:

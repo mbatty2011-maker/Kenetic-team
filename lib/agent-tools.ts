@@ -180,6 +180,8 @@ const RUN_SSH: Anthropic.Tool = {
 const ALL_TOOLS = [CREATE_FILE, WEB_SEARCH, SEND_EMAIL, DRAFT_EMAIL, APPEND_TO_KB];
 
 
+const MAYA_TOOLS = [CREATE_FILE, WEB_SEARCH, APPEND_TO_KB];
+
 // AGENT_TOOLS: used in /api/chat — all agents get all tools; Kai also gets propose_ssh + execute_code + computer use
 export const AGENT_TOOLS: Partial<Record<AgentKey, Anthropic.Tool[]>> = {
   alex:   ALL_TOOLS,
@@ -187,6 +189,7 @@ export const AGENT_TOOLS: Partial<Record<AgentKey, Anthropic.Tool[]>> = {
   kai:    [...ALL_TOOLS, PROPOSE_SSH, EXECUTE_CODE],
   dana:   ALL_TOOLS,
   marcus: ALL_TOOLS,
+  maya:   MAYA_TOOLS,
 };
 
 // TASK_AGENT_TOOLS: used in /api/task — same but Kai gets run_ssh instead of propose_ssh
@@ -196,6 +199,7 @@ export const TASK_AGENT_TOOLS: Partial<Record<AgentKey, Anthropic.Tool[]>> = {
   kai:    [...ALL_TOOLS, RUN_SSH, EXECUTE_CODE],
   dana:   ALL_TOOLS,
   marcus: ALL_TOOLS,
+  maya:   MAYA_TOOLS,
 };
 
 // ─── Status labels for the UI ────────────────────────────────────────────────
