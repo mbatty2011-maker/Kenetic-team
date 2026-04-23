@@ -32,7 +32,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Public paths that don't require auth
-  const publicPaths = ["/login", "/signup", "/auth/callback"];
+  const publicPaths = ["/login", "/signup", "/auth/callback", "/api/inngest"];
   const isPublicPath = pathname === "/" || publicPaths.some((p) => pathname.startsWith(p));
 
   // Computer Use is internal only — redirect anyone who navigates there directly
