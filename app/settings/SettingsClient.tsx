@@ -73,9 +73,14 @@ export default function SettingsPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setSaving(false); return; }
 
-    const { error } = await supabase
-      .from("profiles")
-      .upsert({ id: user.id, ...profile, updated_at: new Date().toISOString() });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase as any).rpc("upsert_profile", {
+      p_user_id:    user.id,
+      p_full_name:  profile.full_name,
+      p_company_name: profile.company_name,
+      p_role_title: profile.role_title,
+      p_user_context: profile.user_context,
+    });
 
     setSaving(false);
     if (!error) {
