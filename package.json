@@ -14,8 +14,11 @@
     "@e2b/desktop": "^2.2.2",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.104.0",
+    "docx": "^9.6.1",
+    "exceljs": "^4.4.0",
     "inngest": "^4.2.4",
     "next": "14.2.35",
+    "pdf-lib": "^1.17.1",
     "react": "^18",
     "react-dom": "^18",
     "ssh2": "^1.17.0"

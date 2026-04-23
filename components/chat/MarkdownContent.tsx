@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import FileCard from "./FileCard";
 
 // Lightweight markdown renderer — no external dependencies
 export default function MarkdownContent({ content }: { content: string }) {
@@ -230,7 +231,13 @@ function renderInline(text: string): React.ReactNode {
     } else if (match[5]) {
       parts.push(<code key={match.index} className="bg-apple-gray-100 rounded px-1 py-0.5 text-xs font-mono">{match[6]}</code>);
     } else if (match[7]) {
-      parts.push(<a key={match.index} href={match[9]} className="text-blue-600 underline" target="_blank" rel="noopener noreferrer">{match[8]}</a>);
+      const href = match[9];
+      const text = match[8];
+      if (href.includes("/storage/v1/object/sign/agent-files/")) {
+        parts.push(<FileCard key={match.index} href={href} filename={text} />);
+      } else {
+        parts.push(<a key={match.index} href={href} className="text-blue-600 underline" target="_blank" rel="noopener noreferrer">{text}</a>);
+      }
     }
     last = match.index + match[0].length;
   }

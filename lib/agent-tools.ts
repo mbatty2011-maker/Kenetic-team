@@ -2,69 +2,71 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AgentKey } from "./agents";
 import { tavilySearch, formatSearchResults } from "./tools/search";
-import { createSpreadsheet, readSpreadsheet } from "./tools/sheets";
-import { createDocument } from "./tools/gdocs";
 import { sendEmail, draftEmail } from "./tools/email";
 import { appendToKnowledgeBase } from "./tools/knowledge";
 import { executeCode } from "./tools/codeExecution";
+import type { DocumentSection, XlsxSheet } from "./files/types";
+import { uploadAgentFile, sanitizeFilename } from "./files/upload";
 
 export type ToolContext = { supabase: SupabaseClient; userId: string };
 
 // ─── Tool definitions ────────────────────────────────────────────────────────
 
-const CREATE_SPREADSHEET: Anthropic.Tool = {
-  name: "create_spreadsheet",
+const CREATE_FILE: Anthropic.Tool = {
+  name: "create_file",
   description:
-    "Create a new Google Spreadsheet with structured data. Returns the URL. Use for financial models, budgets, trackers, contact lists, or any tabular data.",
+    "Generate a downloadable file (Word document, Excel spreadsheet, or PDF) uploaded to secure storage. Returns a signed download link valid for 24 hours. Use for any deliverable the user should be able to download — reports, financial models, memos, trackers, contracts, briefs.\n\nFor format \"docx\" or \"pdf\": provide content.sections (structured document body).\nFor format \"xlsx\": provide content.sheets (tabular data with headers and rows).",
   input_schema: {
     type: "object" as const,
     properties: {
-      title: { type: "string" },
-      sheets: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            name: { type: "string", description: "Tab name" },
-            data: {
-              type: "array",
-              description: "2D array — first row is headers",
-              items: { type: "array", items: { type: "string" } },
+      format: {
+        type: "string",
+        enum: ["docx", "xlsx", "pdf"],
+        description: "File format to generate",
+      },
+      title: {
+        type: "string",
+        description: "Document title and base filename (no extension)",
+      },
+      content: {
+        type: "object" as const,
+        description: "Structured content. Provide sections for docx/pdf, or sheets for xlsx.",
+        properties: {
+          sections: {
+            type: "array",
+            description: "Document body sections — use for docx and pdf",
+            items: {
+              type: "object" as const,
+              properties: {
+                type: { type: "string", enum: ["heading", "paragraph", "bullet_list", "numbered_list", "table"] },
+                level: { type: "integer", description: "Heading level 1, 2, or 3 — heading only" },
+                text: { type: "string", description: "Text content — heading or paragraph" },
+                bold: { type: "boolean", description: "Bold text — paragraph only" },
+                italic: { type: "boolean", description: "Italic text — paragraph only" },
+                items: { type: "array", items: { type: "string" }, description: "List items — bullet_list or numbered_list" },
+                headers: { type: "array", items: { type: "string" }, description: "Column headers — table" },
+                rows: { type: "array", items: { type: "array", items: { type: "string" } }, description: "Table rows — table" },
+              },
+              required: ["type"],
             },
           },
-          required: ["name", "data"],
+          sheets: {
+            type: "array",
+            description: "Spreadsheet tabs — use for xlsx only",
+            items: {
+              type: "object" as const,
+              properties: {
+                name: { type: "string", description: "Tab name" },
+                headers: { type: "array", items: { type: "string" }, description: "Column headers" },
+                rows: { type: "array", items: { type: "array", items: { type: "string" } }, description: "Data rows" },
+              },
+              required: ["name", "headers", "rows"],
+            },
+          },
         },
       },
     },
-    required: ["title", "sheets"],
-  },
-};
-
-const READ_SPREADSHEET: Anthropic.Tool = {
-  name: "read_spreadsheet",
-  description:
-    "Read data from an existing Google Spreadsheet by its URL or ID. Returns the cell data as tab-separated text.",
-  input_schema: {
-    type: "object" as const,
-    properties: {
-      spreadsheet_id_or_url: { type: "string", description: "Spreadsheet URL or ID" },
-      range: { type: "string", description: "A1 notation range, e.g. 'Sheet1!A1:D20'. Defaults to A1:Z100." },
-    },
-    required: ["spreadsheet_id_or_url"],
-  },
-};
-
-const CREATE_DOCUMENT: Anthropic.Tool = {
-  name: "create_document",
-  description:
-    "Create a new Google Doc. Returns the URL. Use for reports, memos, letters, briefs, contract templates, or any written artifact.",
-  input_schema: {
-    type: "object" as const,
-    properties: {
-      title: { type: "string" },
-      content: { type: "string", description: "Full document text (use newlines for structure)" },
-    },
-    required: ["title", "content"],
+    required: ["format", "title", "content"],
   },
 };
 
@@ -175,7 +177,7 @@ const RUN_SSH: Anthropic.Tool = {
 
 // ─── Per-agent tool sets ─────────────────────────────────────────────────────
 
-const ALL_TOOLS = [CREATE_SPREADSHEET, READ_SPREADSHEET, CREATE_DOCUMENT, WEB_SEARCH, SEND_EMAIL, DRAFT_EMAIL, APPEND_TO_KB];
+const ALL_TOOLS = [CREATE_FILE, WEB_SEARCH, SEND_EMAIL, DRAFT_EMAIL, APPEND_TO_KB];
 
 
 // AGENT_TOOLS: used in /api/chat — all agents get all tools; Kai also gets propose_ssh + execute_code + computer use
@@ -199,9 +201,7 @@ export const TASK_AGENT_TOOLS: Partial<Record<AgentKey, Anthropic.Tool[]>> = {
 // ─── Status labels for the UI ────────────────────────────────────────────────
 
 export const TOOL_LABELS: Record<string, string> = {
-  create_spreadsheet:       "Building spreadsheet...",
-  read_spreadsheet:         "Reading spreadsheet...",
-  create_document:          "Creating document...",
+  create_file:              "Generating file...",
   web_search:               "Searching the web...",
   send_email:               "Sending email...",
   draft_email:              "Drafting email...",
@@ -222,25 +222,40 @@ export async function executeAgentTool(
 ): Promise<string> {
   try {
     switch (name) {
-      case "create_spreadsheet": {
-        const r = await createSpreadsheet(
-          input.title as string,
-          input.sheets as { name: string; data: (string | number)[][] }[]
-        );
-        return `Spreadsheet created.\nTitle: ${r.title}\nURL: ${r.url}`;
-      }
+      case "create_file": {
+        const format  = input.format as "docx" | "xlsx" | "pdf";
+        const title   = input.title as string;
+        const content = input.content as { sections?: DocumentSection[]; sheets?: XlsxSheet[] };
+        try {
+          let buffer: Buffer;
+          let contentType: string;
 
-      case "read_spreadsheet": {
-        const data = await readSpreadsheet(
-          input.spreadsheet_id_or_url as string,
-          input.range as string | undefined
-        );
-        return data;
-      }
+          if (format === "docx") {
+            const { generateDocx } = await import("./files/generators/docx");
+            if (!content.sections?.length) throw new Error("sections required for docx");
+            buffer = await generateDocx({ title, sections: content.sections });
+            contentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+          } else if (format === "xlsx") {
+            const { generateXlsx } = await import("./files/generators/xlsx");
+            if (!content.sheets?.length) throw new Error("sheets required for xlsx");
+            buffer = await generateXlsx({ title, sheets: content.sheets });
+            contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+          } else {
+            const { generatePdf } = await import("./files/generators/pdf");
+            if (!content.sections?.length) throw new Error("sections required for pdf");
+            buffer = await generatePdf({ title, sections: content.sections });
+            contentType = "application/pdf";
+          }
 
-      case "create_document": {
-        const r = await createDocument(input.title as string, input.content as string);
-        return `Document created.\nTitle: ${r.title}\nURL: ${r.url}`;
+          const filename = `${sanitizeFilename(title)}.${format}`;
+          const { signedUrl, sizeBytes } = await uploadAgentFile(context.userId, filename, buffer, contentType);
+          const kb = Math.round(sizeBytes / 1024);
+          const sizeLabel = kb < 1024 ? `${kb} KB` : `${(kb / 1024).toFixed(1)} MB`;
+          return `File created (${sizeLabel}). Include this exact markdown link verbatim in your response so the user can download it:\n[${title}.${format}](${signedUrl})`;
+        } catch (fileErr) {
+          const msg = fileErr instanceof Error ? fileErr.message : String(fileErr);
+          return `ERROR: File creation failed — ${msg}. Inform the user the file could not be generated and offer to provide the content as formatted text instead.`;
+        }
       }
 
       case "web_search": {
