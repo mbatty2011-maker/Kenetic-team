@@ -30,10 +30,7 @@ export async function uploadAgentFile(
     .from("agent-files")
     .upload(path, buffer, { contentType, upsert: false });
 
-  if (uploadError) {
-    console.error("[uploadAgentFile] upload error", { path, message: uploadError.message, name: uploadError.name });
-    throw new Error(`Storage upload failed: ${uploadError.message}`);
-  }
+  if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`);
 
   const { data, error: urlError } = await supabase.storage
     .from("agent-files")
