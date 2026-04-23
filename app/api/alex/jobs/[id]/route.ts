@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(
+export async function GET(
   _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
@@ -16,7 +16,9 @@ export async function POST(
       cookies: {
         getAll() { return cookieStore.getAll(); },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options));
+          cookiesToSet.forEach(({ name, value, options }) =>
+            cookieStore.set(name, value, options)
+          );
         },
       },
     }
@@ -26,11 +28,13 @@ export async function POST(
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (supabase as any).rpc("cancel_task", {
-    p_task_id: params.id,
+  const { data: job, error } = await (supabase as any).rpc("get_alex_job", {
+    p_job_id: params.id,
     p_user_id: user.id,
   });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ success: true });
+  if (!job) return NextResponse.json({ error: "Job not found" }, { status: 404 });
+
+  return NextResponse.json(job);
 }

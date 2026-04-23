@@ -9,6 +9,7 @@ import TypingIndicator from "./TypingIndicator";
 import ChatInput from "./ChatInput";
 import AgentHeader from "./AgentHeader";
 import SynthesisCard from "./SynthesisCard";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 
 interface Message {
   id: string;
@@ -24,21 +25,141 @@ interface SynthesisData {
   taskSummary: string;
 }
 
+interface JobStep {
+  timestamp: string;
+  type: "thinking" | "tool_call" | "specialist" | "specialist_done" | "warning" | "done" | "error";
+  summary: string;
+  detail?: string;
+}
+
+interface AlexJob {
+  id: string;
+  status: "queued" | "running" | "complete" | "failed";
+  prompt: string;
+  steps: JobStep[];
+  result: string | null;
+  error: string | null;
+}
+
+const STEP_ICONS: Record<string, string> = {
+  thinking:       "💭",
+  tool_call:      "🔧",
+  specialist:     "🤝",
+  specialist_done:"✓",
+  warning:        "⚠️",
+  done:           "✅",
+  error:          "❌",
+};
+
+function JobProgressBubble({
+  job,
+  onRetry,
+}: {
+  job: AlexJob;
+  onRetry: () => void;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const alex = AGENTS.find((a) => a.key === "alex")!;
+
+  useEffect(() => {
+    if (job.status === "complete" || job.status === "failed") {
+      setExpanded(false);
+    }
+  }, [job.status]);
+
+  const isActive = job.status === "queued" || job.status === "running";
+  const visibleSteps = job.steps.filter((s) => s.type !== "thinking" || isActive);
+
+  return (
+    <div className="flex gap-2.5 justify-start">
+      <div
+        className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0 mt-0.5"
+        style={{ background: alex.accent }}
+      >
+        {alex.initials}
+      </div>
+
+      <div className="max-w-[85%] space-y-1.5">
+        {/* Status badge */}
+        <div className="flex items-center gap-2">
+          {isActive && (
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="animate-spin text-apple-gray-400 flex-shrink-0" style={{ animationDuration: "1.5s" }}>
+              <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.5" strokeDasharray="14 8" />
+            </svg>
+          )}
+          <span className="text-xs text-apple-gray-500">
+            {job.status === "queued"  && "Queued…"}
+            {job.status === "running" && "Working…"}
+            {job.status === "complete" && "Done"}
+            {job.status === "failed"  && "Failed"}
+          </span>
+          {visibleSteps.length > 0 && (
+            <button
+              onClick={() => setExpanded((e) => !e)}
+              className="text-[11px] text-apple-gray-400 hover:text-apple-gray-600 transition-colors"
+            >
+              {expanded ? "hide steps" : `${visibleSteps.length} steps`}
+            </button>
+          )}
+        </div>
+
+        {/* Step trail */}
+        {expanded && visibleSteps.length > 0 && (
+          <div className="bg-apple-gray-50 border border-apple-gray-100 rounded-apple-lg px-3 py-2 space-y-1.5">
+            {visibleSteps.map((step, i) => (
+              <div key={i} className="flex items-start gap-1.5">
+                <span className="text-[11px] flex-shrink-0 mt-px">{STEP_ICONS[step.type] ?? "·"}</span>
+                <div className="min-w-0">
+                  <span className="text-[11px] text-apple-gray-600">{step.summary}</span>
+                  {step.detail && step.type !== "thinking" && (
+                    <p className="text-[10px] text-apple-gray-400 truncate mt-0.5">{step.detail}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+            {isActive && (
+              <div className="flex items-center gap-1.5 pt-0.5">
+                <span className="text-[11px]">·</span>
+                <span className="text-[11px] text-apple-gray-400 italic">Still running…</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Error state */}
+        {job.status === "failed" && (
+          <div className="bg-red-50 border border-red-200 rounded-apple-lg px-3 py-2.5 space-y-2">
+            <p className="text-xs text-red-700">{job.error ?? "An error occurred."}</p>
+            <button
+              onClick={onRetry}
+              className="text-xs font-medium text-red-700 underline hover:no-underline"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function AlexChatWindow() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const supabase = createClient();
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const isNewConvoRef = useRef(false);
+  const channelsRef = useRef<Map<string, RealtimeChannel>>(new Map());
+
   const [messages, setMessages] = useState<Message[]>([]);
+  const [activeJobs, setActiveJobs] = useState<Map<string, AlexJob>>(new Map());
   const [isLoading, setIsLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const [pendingOrchestrationTask, setPendingOrchestrationTask] = useState<string | null>(null);
   const [synthesis, setSynthesis] = useState<SynthesisData | null>(null);
   const [userEmail, setUserEmail] = useState("");
 
   const alex = AGENTS.find((a) => a.key === "alex")!;
 
+  // ── Auth + user email ───────────────────────────────────────────────────────
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user?.email) setUserEmail(user.email);
@@ -46,19 +167,41 @@ export default function AlexChatWindow() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── Load conversation + resume any active jobs on mount/nav ────────────────
   useEffect(() => {
     const cid = searchParams.get("cid");
+
+    // Unsubscribe from all existing channels when conversation changes
+    channelsRef.current.forEach((ch) => supabase.removeChannel(ch));
+    channelsRef.current.clear();
+
     if (cid) {
       setConversationId(cid);
       loadMessages(cid);
+      resumeActiveJobs();
     } else {
       setMessages([]);
       setConversationId(null);
-      setPendingOrchestrationTask(null);
+      setActiveJobs(new Map());
       setSynthesis(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
+
+  // Scroll to bottom when messages or jobs update
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, activeJobs]);
+
+  // ── Cleanup channels on unmount ─────────────────────────────────────────────
+  useEffect(() => {
+    return () => {
+      channelsRef.current.forEach((ch) => supabase.removeChannel(ch));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Helpers ─────────────────────────────────────────────────────────────────
 
   async function loadMessages(cid: string) {
     const { data } = await supabase
@@ -69,15 +212,70 @@ export default function AlexChatWindow() {
     if (data && searchParams.get("cid") === cid) setMessages(data as Message[]);
   }
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  // On page load, check for any queued/running jobs for this user and re-subscribe.
+  // This ensures the live trail resumes correctly after a tab close/reopen.
+  async function resumeActiveJobs() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: jobs } = await (supabase as any).rpc("get_active_alex_jobs", {
+      p_user_id: user.id,
+    });
+
+    if (!jobs || !Array.isArray(jobs)) return;
+
+    for (const job of jobs as AlexJob[]) {
+      setActiveJobs((prev) => new Map(prev).set(job.id, job));
+      subscribeToJob(job.id, user.id);
+    }
+  }
+
+  function subscribeToJob(jobId: string, userId: string) {
+    if (channelsRef.current.has(jobId)) return; // already subscribed
+
+    const channel = supabase
+      .channel(`alex-job-${jobId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "alex_jobs",
+          filter: `id=eq.${jobId}`,
+        },
+        (payload) => {
+          const updated = payload.new as AlexJob;
+          setActiveJobs((prev) => new Map(prev).set(jobId, updated));
+
+          if (updated.status === "complete" || updated.status === "failed") {
+            // Unsubscribe and clean up
+            const ch = channelsRef.current.get(jobId);
+            if (ch) {
+              supabase.removeChannel(ch);
+              channelsRef.current.delete(jobId);
+            }
+            setIsLoading(false);
+
+            // On completion, reload messages so Alex's final message appears
+            if (updated.status === "complete") {
+              const cid = searchParams.get("cid");
+              if (cid) loadMessages(cid);
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    channelsRef.current.set(jobId, channel);
+    void userId; // userId may be used for future filtering
+  }
 
   async function ensureConversation(firstMessage: string): Promise<string> {
     if (conversationId) return conversationId;
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Not authenticated");
-    const title = firstMessage.slice(0, 60) + (firstMessage.length > 60 ? "..." : "");
+    const title = firstMessage.slice(0, 60) + (firstMessage.length > 60 ? "…" : "");
     const { data, error } = await supabase
       .from("conversations")
       .insert({ user_id: user.id, agent_key: "alex", title })
@@ -89,15 +287,7 @@ export default function AlexChatWindow() {
     return data.id;
   }
 
-  async function saveMessage(cid: string, uid: string, role: string, content: string) {
-    await supabase.from("messages").insert({
-      conversation_id: cid,
-      user_id: uid,
-      agent_key: "alex",
-      role,
-      content,
-    });
-  }
+  // ── Send message ────────────────────────────────────────────────────────────
 
   async function sendMessage(content: string) {
     if (!content.trim() || isLoading) return;
@@ -105,9 +295,9 @@ export default function AlexChatWindow() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    isNewConvoRef.current = !conversationId;
     const cid = await ensureConversation(content);
 
+    // Optimistic user message
     const userMsg: Message = {
       id: crypto.randomUUID(),
       role: "user",
@@ -116,204 +306,85 @@ export default function AlexChatWindow() {
       created_at: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, userMsg]);
-    await saveMessage(cid, user.id, "user", content);
+
+    // Save user message to DB (this is what checkDailyLimit counts)
+    await supabase.from("messages").insert({
+      conversation_id: cid,
+      user_id: user.id,
+      agent_key: "alex",
+      role: "user",
+      content,
+    });
 
     setIsLoading(true);
     setSynthesis(null);
 
-    if (pendingOrchestrationTask) {
-      // User has answered Alex's clarifying questions — run full orchestration now
-      await runOrchestration(cid, user.id, pendingOrchestrationTask, content);
-      setPendingOrchestrationTask(null);
-    } else {
-      await streamAlexResponse(content, cid, user.id);
-    }
-
-    setIsLoading(false);
-  }
-
-  async function streamAlexResponse(
-    content: string,
-    cid: string,
-    uid: string,
-  ) {
-    const streamingId = crypto.randomUUID();
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: streamingId,
-        role: "assistant",
-        content: "",
-        agent_key: "alex",
-        created_at: new Date().toISOString(),
-        isStreaming: true,
-      },
-    ]);
-
+    // Start the Inngest background job
     try {
-      const res = await fetch("/api/alex", {
+      const res = await fetch("/api/alex/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: content, conversationId: cid, mode: "classify" }),
+        body: JSON.stringify({ message: content, conversationId: cid }),
       });
 
-      if (!res.body) throw new Error("No body");
+      const data = await res.json().catch(() => ({}));
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let fullContent = "";
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const data = line.slice(6).trim();
-          if (data === "[DONE]") continue;
-          try {
-            const parsed = JSON.parse(data);
-            if (parsed.type === "orchestrate_start") {
-              // Signal received — next user reply will trigger full orchestration
-              setPendingOrchestrationTask(content);
-            } else if (parsed.type === "text") {
-              fullContent += parsed.text;
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === streamingId ? { ...m, content: fullContent } : m
-                )
-              );
-            }
-          } catch {}
-        }
+      if (!res.ok) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: data.error ?? "Failed to start — please try again.",
+            agent_key: "alex",
+            created_at: new Date().toISOString(),
+          },
+        ]);
+        setIsLoading(false);
+        return;
       }
 
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === streamingId ? { ...m, isStreaming: false } : m
-        )
-      );
+      const { jobId } = data as { jobId: string };
 
-      if (fullContent) {
-        await saveMessage(cid, uid, "assistant", fullContent);
-      }
+      // Add a live job placeholder
+      const newJob: AlexJob = {
+        id: jobId,
+        status: "queued",
+        prompt: content,
+        steps: [],
+        result: null,
+        error: null,
+      };
+      setActiveJobs((prev) => new Map(prev).set(jobId, newJob));
 
-      if (isNewConvoRef.current) {
-        isNewConvoRef.current = false;
-        fetch(`/api/conversation/${cid}/title`, { method: "POST" }).catch(() => {});
-      }
-
-      await supabase
-        .from("conversations")
-        .update({ updated_at: new Date().toISOString() })
-        .eq("id", cid);
-    } catch {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === streamingId
-            ? { ...m, content: "Something went wrong. Please try again.", isStreaming: false }
-            : m
-        )
-      );
-    }
-  }
-
-  async function runOrchestration(cid: string, uid: string, taskSummary: string, clarification?: string) {
-
-    const statusId = crypto.randomUUID();
-
-    try {
-      const res = await fetch("/api/alex", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: clarification
-            ? `${taskSummary}\n\nAdditional context from user: ${clarification}`
-            : taskSummary,
-          conversationId: cid,
-          mode: "orchestrate"
-        }),
-      });
-
-      if (!res.body) throw new Error("No body");
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const data = line.slice(6).trim();
-          try {
-            const parsed = JSON.parse(data);
-
-            if (parsed.type === "status") {
-              setMessages((prev) => {
-                const existing = prev.find((m) => m.id === statusId);
-                if (existing) {
-                  return prev.map((m) =>
-                    m.id === statusId ? { ...m, content: parsed.text } : m
-                  );
-                }
-                return [
-                  ...prev,
-                  {
-                    id: statusId,
-                    role: "system" as const,
-                    content: parsed.text,
-                    created_at: new Date().toISOString(),
-                  },
-                ];
-              });
-            } else if (parsed.type === "agent_done") {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === statusId
-                    ? { ...m, content: `${parsed.name} responded ✓` }
-                    : m
-                )
-              );
-            } else if (parsed.type === "synthesis_complete") {
-              // Remove the running status message
-              setMessages((prev) => prev.filter((m) => m.id !== statusId));
-              const synthContent: string = parsed.content ?? "";
-              setSynthesis({ content: synthContent, taskSummary: parsed.taskSummary });
-
-              // Save the synthesis as an assistant message
-              if (synthContent) await saveMessage(cid, uid, "assistant", synthContent);
-              await supabase
-                .from("conversations")
-                .update({ updated_at: new Date().toISOString() })
-                .eq("id", cid);
-            }
-          } catch {}
-        }
-      }
+      // Subscribe to Realtime updates for this job row
+      subscribeToJob(jobId, user.id);
     } catch {
       setMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
           role: "assistant",
-          content: "Something went wrong during orchestration. Please try again.",
+          content: "Something went wrong. Please try again.",
           agent_key: "alex",
           created_at: new Date().toISOString(),
         },
       ]);
+      setIsLoading(false);
     }
   }
 
+  async function retryJob(job: AlexJob) {
+    // Remove the failed job placeholder and resend the original message
+    setActiveJobs((prev) => {
+      const next = new Map(prev);
+      next.delete(job.id);
+      return next;
+    });
+    await sendMessage(job.prompt);
+  }
+
+  // ── SynthesisCard handlers (kept intact — not touched in this refactor) ─────
   async function handleConfirmSend() {
     if (!synthesis) return;
     const res = await fetch("/api/email/send", {
@@ -334,12 +405,16 @@ export default function AlexChatWindow() {
     setSynthesis(null);
   }
 
+  // ── Render ──────────────────────────────────────────────────────────────────
+
+  const hasActivity = messages.length > 0 || activeJobs.size > 0;
+
   return (
     <div className="flex flex-col h-full min-h-0 bg-white md:bg-apple-gray-50">
       <AgentHeader agentKey="alex" />
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2">
-        {messages.length === 0 && !isLoading && (
+        {!hasActivity && !isLoading && (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
               <div
@@ -358,7 +433,16 @@ export default function AlexChatWindow() {
           <MessageBubble key={msg.id} message={msg} currentAgentKey="alex" />
         ))}
 
-        {isLoading && !messages.some((m) => m.isStreaming && m.content.length > 0) && (
+        {/* Live job progress bubbles — one per active job */}
+        {Array.from(activeJobs.values()).map((job) => (
+          <JobProgressBubble
+            key={job.id}
+            job={job}
+            onRetry={() => retryJob(job)}
+          />
+        ))}
+
+        {isLoading && activeJobs.size === 0 && (
           <TypingIndicator agentKey="alex" />
         )}
 

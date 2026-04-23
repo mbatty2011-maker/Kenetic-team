@@ -73,12 +73,8 @@ export default function TasksClient() {
 
   async function loadTasks() {
     if (!userId) return;
-    const { data } = await supabase
-      .from("tasks")
-      .select("*")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false })
-      .limit(50);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data } = await (supabase as any).rpc("get_user_tasks", { p_user_id: userId });
     if (data) {
       setTasks(data as Task[]);
       if (selected) {

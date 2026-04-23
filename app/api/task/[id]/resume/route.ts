@@ -49,12 +49,11 @@ export async function POST(
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const { data: task } = await supabase
-    .from("tasks")
-    .select("*")
-    .eq("id", taskId)
-    .eq("user_id", user.id)
-    .single();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: task } = await (supabase as any).rpc("get_task", {
+    p_task_id: taskId,
+    p_user_id: user.id,
+  });
 
   if (!task) return NextResponse.json({ error: "Task not found" }, { status: 404 });
   if (task.status !== "awaiting_confirmation") {
@@ -62,11 +61,13 @@ export async function POST(
   }
 
   if (!confirmed) {
-    supabase.from("tasks").update({
-      status: "failed",
-      error: "SSH command cancelled by user",
-      updated_at: new Date().toISOString(),
-    }).eq("id", taskId).then(() => {}, () => {});
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any).rpc("update_task", {
+      p_task_id: taskId,
+      p_user_id: user.id,
+      p_status: "failed",
+      p_error: "SSH command cancelled by user",
+    }).then(() => {}, () => {});
     return NextResponse.json({ cancelled: true });
   }
 
@@ -85,8 +86,12 @@ export async function POST(
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
 
       const persist = () => {
-        supabase.from("tasks").update({ steps: allSteps, updated_at: new Date().toISOString() })
-          .eq("id", taskId).then(() => {}, () => {});
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (supabase as any).rpc("update_task", {
+          p_task_id: taskId,
+          p_user_id: user.id,
+          p_steps: allSteps,
+        }).then(() => {}, () => {});
       };
 
       const addStep = (step: Omit<TaskStep, "timestamp">) => {
@@ -97,8 +102,13 @@ export async function POST(
       };
 
       try {
-        supabase.from("tasks").update({ status: "running", pending_ssh: null })
-          .eq("id", taskId).then(() => {}, () => {});
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (supabase as any).rpc("update_task", {
+          p_task_id: taskId,
+          p_user_id: user.id,
+          p_status: "running",
+          p_clear_pending_ssh: true,
+        }).then(() => {}, () => {});
         send({ type: "resumed" });
 
         addStep({ type: "tool_call", label: "Running SSH command...", tool: "run_ssh_command", command });
@@ -112,14 +122,19 @@ export async function POST(
 
         addStep({ type: "tool_result", label: "SSH result", tool: "run_ssh_command", text: sshResult.slice(0, 300) });
 
-        // Rebuild messages from snapshot
         let messages: Anthropic.MessageParam[];
         try {
           messages = JSON.parse(messagesJSON);
         } catch {
           send({ type: "error", message: "Failed to restore task state" });
-          supabase.from("tasks").update({ status: "failed", error: "Invalid message snapshot", steps: allSteps })
-            .eq("id", taskId).then(() => {}, () => {});
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (supabase as any).rpc("update_task", {
+            p_task_id: taskId,
+            p_user_id: user.id,
+            p_status: "failed",
+            p_error: "Invalid message snapshot",
+            p_steps: allSteps,
+          }).then(() => {}, () => {});
           controller.close();
           return;
         }
@@ -167,12 +182,14 @@ export async function POST(
           if (response.stop_reason !== "tool_use") {
             addStep({ type: "done", label: "Task complete", text: textContent });
             send({ type: "complete", result: textContent, task_id: taskId });
-            supabase.from("tasks").update({
-              status: "done",
-              result: textContent,
-              steps: allSteps,
-              updated_at: new Date().toISOString(),
-            }).eq("id", taskId).then(() => {}, () => {});
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (supabase as any).rpc("update_task", {
+              p_task_id: taskId,
+              p_user_id: user.id,
+              p_status: "done",
+              p_result: textContent,
+              p_steps: allSteps,
+            }).then(() => {}, () => {});
             controller.close();
             return;
           }
@@ -189,17 +206,19 @@ export async function POST(
               const cmd = (tu.input as Record<string, string>).command;
               const reason = (tu.input as Record<string, string>).reason ?? "";
 
-              await supabase.from("tasks").update({
-                status: "awaiting_confirmation",
-                steps: allSteps,
-                pending_ssh: {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              await (supabase as any).rpc("update_task", {
+                p_task_id: taskId,
+                p_user_id: user.id,
+                p_status: "awaiting_confirmation",
+                p_steps: allSteps,
+                p_pending_ssh: {
                   command: cmd,
                   reason,
                   tool_use_id: tu.id,
                   messages: JSON.stringify([...messages]),
                 },
-                updated_at: new Date().toISOString(),
-              }).eq("id", taskId);
+              });
 
               addStep({ type: "confirm_required", label: "SSH confirmation required", command: cmd });
               send({ type: "confirm_ssh", task_id: taskId, command: cmd, reason });
@@ -220,14 +239,26 @@ export async function POST(
         }
 
         send({ type: "error", message: "Task reached maximum steps." });
-        supabase.from("tasks").update({ status: "failed", error: "Max iterations", steps: allSteps })
-          .eq("id", taskId).then(() => {}, () => {});
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (supabase as any).rpc("update_task", {
+          p_task_id: taskId,
+          p_user_id: user.id,
+          p_status: "failed",
+          p_error: "Max iterations",
+          p_steps: allSteps,
+        }).then(() => {}, () => {});
         controller.close();
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         send({ type: "error", message: msg });
-        supabase.from("tasks").update({ status: "failed", error: msg, steps: allSteps })
-          .eq("id", taskId).then(() => {}, () => {});
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (supabase as any).rpc("update_task", {
+          p_task_id: taskId,
+          p_user_id: user.id,
+          p_status: "failed",
+          p_error: msg,
+          p_steps: allSteps,
+        }).then(() => {}, () => {});
         controller.close();
       }
     },

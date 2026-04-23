@@ -83,7 +83,30 @@ create policy "Users can insert own knowledge base"
   on knowledge_base for insert
   with check (auth.uid() = user_id);
 
+-- Async tasks
+create table if not exists tasks (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users on delete cascade,
+  agent_key text not null,
+  title text not null,
+  status text not null default 'running',
+  steps jsonb not null default '[]',
+  result text,
+  error text,
+  pending_ssh jsonb,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+alter table tasks enable row level security;
+
+create policy "Users can manage their own tasks"
+  on tasks for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
 -- Indexes for performance
 create index if not exists messages_conversation_id_idx on messages (conversation_id, created_at desc);
 create index if not exists conversations_user_agent_idx on conversations (user_id, agent_key, updated_at desc);
 create index if not exists knowledge_base_user_id_idx on knowledge_base (user_id, created_at asc);
+create index if not exists tasks_user_id_idx on tasks (user_id, created_at desc);

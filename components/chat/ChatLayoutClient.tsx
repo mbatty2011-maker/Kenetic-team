@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { User } from "@supabase/supabase-js";
 import Sidebar from "@/components/chat/Sidebar";
-import NewTaskModal from "@/components/chat/NewTaskModal";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
 export default function ChatLayoutClient({
@@ -14,7 +13,6 @@ export default function ChatLayoutClient({
   children: React.ReactNode;
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [showNewTask, setShowNewTask] = useState(false);
 
   return (
     <div className="flex h-screen overflow-hidden bg-apple-gray-50">
@@ -36,7 +34,7 @@ export default function ChatLayoutClient({
         `}
         style={{ width: "240px" }}
       >
-        <Sidebar user={user} onClose={() => setSidebarOpen(false)} onNewTask={() => setShowNewTask(true)} />
+        <Sidebar user={user} onClose={() => setSidebarOpen(false)} />
       </div>
 
       {/* Main content */}
@@ -58,9 +56,6 @@ export default function ChatLayoutClient({
         <ErrorBoundary>{children}</ErrorBoundary>
       </div>
 
-      {/* Task modal rendered at root level — outside the CSS-transformed sidebar container
-          so that its fixed positioning is relative to the viewport, not the 240px sidebar */}
-      {showNewTask && <NewTaskModal onClose={() => setShowNewTask(false)} />}
     </div>
   );
 }
