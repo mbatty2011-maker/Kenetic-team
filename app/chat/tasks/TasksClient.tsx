@@ -78,7 +78,7 @@ export default function TasksClient() {
     if (data) {
       setTasks(data as Task[]);
       if (selected) {
-        const updated = data.find((t) => t.id === selected.id);
+        const updated = data.find((t: Task) => t.id === selected.id);
         if (updated) setSelected(updated as Task);
       }
     }

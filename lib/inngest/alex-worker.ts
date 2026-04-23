@@ -85,8 +85,8 @@ export const alexWorker = inngest.createFunction(
     id: "alex-worker",
     name: "Alex Task Runner",
     retries: 2,
+    triggers: [{ event: "alex/task.requested" }],
   },
-  { event: "alex/task.requested" },
   async ({ event, step }) => {
     const { jobId, userId, conversationId } = event.data as {
       jobId: string;
