@@ -26,6 +26,8 @@ export default function FileCard({ href, filename }: { href: string; filename: s
     // ignore malformed URL
   }
 
+  const proxyHref = `/api/download?url=${encodeURIComponent(href)}&filename=${encodeURIComponent(filename)}`;
+
   return (
     <span className="inline-flex items-center gap-3 border border-apple-gray-200 rounded-apple-lg px-4 py-3 bg-white shadow-sm my-1 max-w-xs">
       <span className="text-xl flex-shrink-0">{icon}</span>
@@ -36,7 +38,7 @@ export default function FileCard({ href, filename }: { href: string; filename: s
         </span>
       </span>
       <a
-        href={href}
+        href={proxyHref}
         download={filename}
         className="ml-1 text-xs font-medium text-white bg-apple-gray-950 hover:bg-apple-gray-800 rounded-apple-md px-3 py-1.5 transition-colors flex-shrink-0 no-underline"
         onClick={(e) => e.stopPropagation()}

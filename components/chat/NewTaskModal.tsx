@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { AGENTS } from "@/lib/agents";
 import type { AgentKey } from "@/lib/agents";
+import MarkdownContent from "./MarkdownContent";
 
 interface TaskStep {
   type: string;
@@ -338,8 +339,8 @@ function StepRow({ step }: { step: TaskStep }) {
   if (step.type === "done") {
     return (
       <div className="bg-green-50 border border-green-200 rounded-apple-lg px-4 py-3">
-        <p className="text-xs font-semibold text-green-800 mb-1">🎉 Task Complete</p>
-        <p className="text-xs text-green-700 line-clamp-6 whitespace-pre-wrap">{step.text}</p>
+        <p className="text-xs font-semibold text-green-800 mb-2">🎉 Task Complete</p>
+        <MarkdownContent content={step.text ?? ""} />
       </div>
     );
   }

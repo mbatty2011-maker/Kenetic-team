@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { AGENTS } from "@/lib/agents";
+import MarkdownContent from "@/components/chat/MarkdownContent";
 
 interface Task {
   id: string;
@@ -371,7 +372,7 @@ export default function TasksClient() {
                   ) : step.type === "done" ? (
                     <div className="bg-green-50 border border-green-200 rounded-apple-xl px-4 py-4">
                       <p className="text-xs font-semibold text-green-800 mb-2">🎉 Task Complete</p>
-                      <p className="text-sm text-green-700 whitespace-pre-wrap leading-relaxed">{step.text}</p>
+                      <MarkdownContent content={step.text ?? ""} />
                     </div>
                   ) : step.type === "confirm_required" ? (
                     <div className="flex items-center gap-2">
