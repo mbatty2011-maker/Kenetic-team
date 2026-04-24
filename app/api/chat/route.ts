@@ -174,9 +174,15 @@ export async function POST(req: NextRequest) {
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
       } catch (err) {
-        send({ error: err instanceof Error ? err.message : "Stream error" });
-        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-        controller.close();
+        const msg = err instanceof Error ? err.message : "Stream error";
+        console.error("[chat] stream error:", msg);
+        try {
+          send({ error: msg });
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        } catch {
+          // Controller already closed — client disconnected or request timed out
+        }
       }
     },
   });

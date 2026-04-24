@@ -141,7 +141,10 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
         body: JSON.stringify({ agentKey, message: content, conversationId: cid }),
       });
 
-      if (!res.ok) throw new Error("API error");
+      if (!res.ok) {
+        const detail = await res.json().catch(() => null);
+        throw new Error(detail?.error ?? `API error ${res.status}`);
+      }
       if (!res.body) throw new Error("No response body");
 
       const reader = res.body.getReader();
@@ -221,11 +224,13 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
         .from("conversations")
         .update({ updated_at: new Date().toISOString() })
         .eq("id", cid);
-    } catch {
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[chat] handleAgentMessage failed:", msg);
       setMessages((prev) =>
         prev.map((m) =>
           m.id === streamingId
-            ? { ...m, content: "Something went wrong. Please try again.", isStreaming: false }
+            ? { ...m, content: `Something went wrong: ${msg}`, isStreaming: false }
             : m
         )
       );
