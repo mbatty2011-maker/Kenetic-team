@@ -29,7 +29,7 @@ function sectionToChildren(section: DocumentSection): DocChild[] {
           : HeadingLevel.HEADING_3;
       return [
         new Paragraph({
-          text: section.text,
+          text: section.text ?? "",
           heading: level,
           spacing: { before: section.level === 1 ? 360 : 240, after: 120 },
         }),
@@ -41,7 +41,7 @@ function sectionToChildren(section: DocumentSection): DocChild[] {
         new Paragraph({
           children: [
             new TextRun({
-              text: section.text,
+              text: section.text ?? "",
               bold: section.bold,
               italics: section.italic,
             }),
@@ -51,22 +51,22 @@ function sectionToChildren(section: DocumentSection): DocChild[] {
       ];
 
     case "bullet_list":
-      return section.items.map(
+      return (section.items ?? []).map(
         (item) =>
           new Paragraph({
-            text: item,
+            text: item ?? "",
             bullet: { level: 0 },
             spacing: { after: 60 },
           })
       );
 
     case "numbered_list":
-      return section.items.map(
+      return (section.items ?? []).map(
         (item, i) =>
           new Paragraph({
             children: [
               new TextRun({ text: `${i + 1}. `, bold: true }),
-              new TextRun({ text: item }),
+              new TextRun({ text: item ?? "" }),
             ],
             indent: { left: 360 },
             spacing: { after: 60 },
@@ -74,6 +74,9 @@ function sectionToChildren(section: DocumentSection): DocChild[] {
       );
 
     case "table": {
+      const headers = section.headers ?? [];
+      const rows    = section.rows    ?? [];
+
       const cellBorder = {
         top: { style: BorderStyle.SINGLE, size: 1, color: "CCCCCC" },
         bottom: { style: BorderStyle.SINGLE, size: 1, color: "CCCCCC" },
@@ -83,7 +86,7 @@ function sectionToChildren(section: DocumentSection): DocChild[] {
 
       const headerRow = new TableRow({
         tableHeader: true,
-        children: section.headers.map(
+        children: headers.map(
           (h) =>
             new TableCell({
               borders: cellBorder,
@@ -91,7 +94,7 @@ function sectionToChildren(section: DocumentSection): DocChild[] {
               margins: { top: 60, bottom: 60, left: 120, right: 120 },
               children: [
                 new Paragraph({
-                  children: [new TextRun({ text: h, bold: true })],
+                  children: [new TextRun({ text: h ?? "", bold: true })],
                   alignment: AlignmentType.LEFT,
                 }),
               ],
@@ -99,15 +102,15 @@ function sectionToChildren(section: DocumentSection): DocChild[] {
         ),
       });
 
-      const dataRows = section.rows.map(
+      const dataRows = rows.map(
         (row) =>
           new TableRow({
-            children: row.map(
+            children: (row ?? []).map(
               (cell) =>
                 new TableCell({
                   borders: cellBorder,
                   margins: { top: 60, bottom: 60, left: 120, right: 120 },
-                  children: [new Paragraph({ text: cell })],
+                  children: [new Paragraph({ text: cell ?? "" })],
                 })
             ),
           })
@@ -121,6 +124,9 @@ function sectionToChildren(section: DocumentSection): DocChild[] {
         new Paragraph({ text: "", spacing: { after: 120 } }),
       ];
     }
+
+    default:
+      return [];
   }
 }
 

@@ -281,8 +281,16 @@ export async function executeAgentTool(
     switch (name) {
       case "create_file": {
         const format  = input.format as "docx" | "xlsx" | "pdf";
-        const title   = input.title as string;
-        const content = input.content as { sections?: DocumentSection[]; sheets?: XlsxSheet[] };
+        const title   = ((input.title as string) ?? "").trim();
+        const content = (input.content ?? {}) as { sections?: DocumentSection[]; sheets?: XlsxSheet[] };
+
+        if (!format || !["docx", "xlsx", "pdf"].includes(format)) {
+          return `TOOL_ERROR: Invalid format "${format}". Must be docx, xlsx, or pdf. STOP.`;
+        }
+        if (!title) {
+          return `TOOL_ERROR: title is required. STOP.`;
+        }
+
         try {
           let buffer: Buffer;
           let contentType: string;
@@ -309,26 +317,30 @@ export async function executeAgentTool(
           const kb = Math.round(sizeBytes / 1024);
           const sizeLabel = kb < 1024 ? `${kb} KB` : `${(kb / 1024).toFixed(1)} MB`;
 
-          // Save text content to agent_file_contents so get_agent_output can return it,
-          // but keep it out of the tool result so it doesn't bloat the chat response.
+          // Fire-and-forget: save text content for get_agent_output retrieval.
+          // Must NOT be awaited inside the main try — a DB failure must never
+          // discard the signed URL that was already issued to the user.
           const textContent = content.sheets?.length
             ? sheetsToText(content.sheets)
             : content.sections?.length
             ? sectionsToText(content.sections)
             : "";
           if (textContent) {
-            await context.supabase.from("agent_file_contents").insert({
-              user_id: context.userId,
-              title,
-              format,
-              text_content: textContent,
-            });
+            context.supabase
+              .from("agent_file_contents")
+              .insert({ user_id: context.userId, title, format, text_content: textContent })
+              .then(({ error }) => {
+                if (error) console.error("[create_file] content save failed", { title, error: error.message });
+              })
+              .catch((err: unknown) => {
+                console.error("[create_file] content save threw", { title, error: String(err) });
+              });
           }
 
           return `File created (${sizeLabel}). Include this exact markdown link verbatim in your response so the user can download it:\n[${title}.${format}](${signedUrl})\n\nYou MUST include the markdown link above verbatim in your response. Do not summarise or paraphrase it.`;
         } catch (fileErr) {
           const msg = fileErr instanceof Error ? fileErr.message : String(fileErr);
-          console.error("[create_file] failed", { title: input.title, format: input.format, error: msg });
+          console.error("[create_file] failed", { title, format, error: msg });
           return `TOOL_ERROR: File creation failed with error: "${msg}". STOP. Do not retry. Do not call create_file again. Tell the user immediately that the file could not be generated and why, then offer to paste the content as formatted text in your response.`;
         }
       }

@@ -79,21 +79,21 @@ function drawSection(ctx: Ctx, section: DocumentSection): void {
         section.level === 2 ? [SIZE_H2, LH_H2, 14] :
                               [SIZE_H3, LH_H3, 10];
       ctx.y -= spBefore;
-      drawText(ctx, section.text, ctx.bold, size, lh);
+      drawText(ctx, section.text ?? "", ctx.bold, size, lh);
       ctx.y -= 6;
       break;
     }
 
     case "paragraph": {
       const font = section.bold ? ctx.bold : ctx.regular;
-      drawText(ctx, section.text, font, SIZE_BODY, LH_BODY);
+      drawText(ctx, section.text ?? "", font, SIZE_BODY, LH_BODY);
       ctx.y -= 6;
       break;
     }
 
     case "bullet_list": {
-      for (const item of section.items) {
-        const lines = wrapLines(item, ctx.regular, SIZE_BODY, CONTENT_W - 16);
+      for (const item of (section.items ?? [])) {
+        const lines = wrapLines(item ?? "", ctx.regular, SIZE_BODY, CONTENT_W - 16);
         for (let i = 0; i < lines.length; i++) {
           ensureSpace(ctx, LH_BODY);
           if (i === 0) {
@@ -108,8 +108,9 @@ function drawSection(ctx: Ctx, section: DocumentSection): void {
     }
 
     case "numbered_list": {
-      for (let n = 0; n < section.items.length; n++) {
-        const lines = wrapLines(section.items[n], ctx.regular, SIZE_BODY, CONTENT_W - 22);
+      const items = section.items ?? [];
+      for (let n = 0; n < items.length; n++) {
+        const lines = wrapLines(items[n] ?? "", ctx.regular, SIZE_BODY, CONTENT_W - 22);
         for (let i = 0; i < lines.length; i++) {
           ensureSpace(ctx, LH_BODY);
           if (i === 0) {
@@ -124,15 +125,17 @@ function drawSection(ctx: Ctx, section: DocumentSection): void {
     }
 
     case "table": {
-      const numCols   = Math.max(section.headers.length, 1);
+      const headers = section.headers ?? [];
+      const rows    = section.rows    ?? [];
+      const numCols   = Math.max(headers.length, 1);
       const colWidth  = CONTENT_W / numCols;
       const rowH      = 20;
       const cellSize  = SIZE_BODY - 1;
-      const allRows   = [section.headers, ...section.rows];
+      const allRows   = [headers, ...rows];
 
       for (let ri = 0; ri < allRows.length; ri++) {
         ensureSpace(ctx, rowH + 2);
-        const row      = allRows[ri];
+        const row      = allRows[ri] ?? [];
         const isHeader = ri === 0;
         const rowY     = ctx.y - rowH + cellSize;
 
@@ -154,6 +157,9 @@ function drawSection(ctx: Ctx, section: DocumentSection): void {
       ctx.y -= 10;
       break;
     }
+
+    default:
+      break;
   }
 }
 

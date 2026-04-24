@@ -40,13 +40,17 @@ export async function uploadAgentFile(
     .createSignedUrl(path, 86400); // 24h
 
   if (urlError || !data) {
+    // Clean up the orphaned upload
+    await supabase.storage.from("agent-files").remove([path]).catch(() => {});
     console.error("[uploadAgentFile] signed URL failed", { path, error: urlError?.message });
     throw new Error(`Signed URL failed: ${urlError?.message ?? "unknown"}`);
   }
 
   const sizeBytes = buffer.byteLength;
-  // Append size as a non-validated query param so FileCard can display it
-  const signedUrl = `${data.signedUrl}&_sz=${sizeBytes}`;
+  // Append size as a query param so FileCard can display it without an extra DB call
+  const urlObj = new URL(data.signedUrl);
+  urlObj.searchParams.set("_sz", String(sizeBytes));
+  const signedUrl = urlObj.toString();
 
   return { signedUrl, storagePath: path, sizeBytes };
 }
