@@ -237,6 +237,37 @@ export const TOOL_LABELS: Record<string, string> = {
   execute_code:             "Running code...",
 };
 
+// ─── Content-to-text helpers (used so file content is saved in result) ───────
+
+function sectionsToText(sections: DocumentSection[]): string {
+  return sections.map((s) => {
+    switch (s.type) {
+      case "heading":    return `${"#".repeat(s.level ?? 1)} ${s.text ?? ""}`;
+      case "paragraph":  return s.text ?? "";
+      case "bullet_list":   return (s.items ?? []).map((i) => `- ${i}`).join("\n");
+      case "numbered_list": return (s.items ?? []).map((i, n) => `${n + 1}. ${i}`).join("\n");
+      case "table": {
+        const headers = s.headers ?? [];
+        const rows = s.rows ?? [];
+        const header = `| ${headers.join(" | ")} |`;
+        const divider = `| ${headers.map(() => "---").join(" | ")} |`;
+        const body = rows.map((r) => `| ${r.join(" | ")} |`).join("\n");
+        return [header, divider, body].filter(Boolean).join("\n");
+      }
+      default: return "";
+    }
+  }).join("\n\n");
+}
+
+function sheetsToText(sheets: XlsxSheet[]): string {
+  return sheets.map((sheet) => {
+    const header = `| ${sheet.headers.join(" | ")} |`;
+    const divider = `| ${sheet.headers.map(() => "---").join(" | ")} |`;
+    const body = sheet.rows.map((r) => `| ${r.join(" | ")} |`).join("\n");
+    return `### ${sheet.name}\n\n${[header, divider, body].join("\n")}`;
+  }).join("\n\n");
+}
+
 // ─── Tool execution ──────────────────────────────────────────────────────────
 
 export const SSH_CONFIRMATION_TOKEN = "SSH_CONFIRMATION_REQUIRED";
@@ -277,7 +308,12 @@ export async function executeAgentTool(
           const { signedUrl, sizeBytes } = await uploadAgentFile(context.userId, filename, buffer, contentType);
           const kb = Math.round(sizeBytes / 1024);
           const sizeLabel = kb < 1024 ? `${kb} KB` : `${(kb / 1024).toFixed(1)} MB`;
-          return `File created (${sizeLabel}). Include this exact markdown link verbatim in your response so the user can download it:\n[${title}.${format}](${signedUrl})`;
+          const textContent = content.sheets?.length
+            ? sheetsToText(content.sheets)
+            : content.sections?.length
+            ? sectionsToText(content.sections)
+            : "";
+          return `File created (${sizeLabel}). Include this exact markdown link verbatim in your response so the user can download it:\n[${title}.${format}](${signedUrl})\n\n## Full content\n\n${textContent}`;
         } catch (fileErr) {
           const msg = fileErr instanceof Error ? fileErr.message : String(fileErr);
           return `ERROR: File creation failed — ${msg}. Inform the user the file could not be generated and offer to provide the content as formatted text instead.`;
