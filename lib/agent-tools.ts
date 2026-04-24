@@ -113,6 +113,29 @@ const DRAFT_EMAIL: Anthropic.Tool = {
   },
 };
 
+const GET_AGENT_OUTPUT: Anthropic.Tool = {
+  name: "get_agent_output",
+  description:
+    "Retrieve recent completed outputs from another agent. Use this to access work your colleagues have already produced — financial models from Jeremy, technical specs from Kai, sales strategies from Dana, legal documents from Marcus, or marketing copy from Maya.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      agent: {
+        type: "string",
+        enum: ["alex", "jeremy", "kai", "dana", "marcus", "maya"],
+        description: "Which agent's outputs to retrieve",
+      },
+      limit: {
+        type: "integer",
+        description: "Number of recent outputs to retrieve (default 3, max 5)",
+        minimum: 1,
+        maximum: 5,
+      },
+    },
+    required: ["agent"],
+  },
+};
+
 const APPEND_TO_KB: Anthropic.Tool = {
   name: "append_to_knowledge_base",
   description:
@@ -177,10 +200,9 @@ const RUN_SSH: Anthropic.Tool = {
 
 // ─── Per-agent tool sets ─────────────────────────────────────────────────────
 
-const ALL_TOOLS = [CREATE_FILE, WEB_SEARCH, SEND_EMAIL, DRAFT_EMAIL, APPEND_TO_KB];
+const ALL_TOOLS = [CREATE_FILE, WEB_SEARCH, SEND_EMAIL, DRAFT_EMAIL, APPEND_TO_KB, GET_AGENT_OUTPUT];
 
-
-const MAYA_TOOLS = [CREATE_FILE, WEB_SEARCH, APPEND_TO_KB];
+const MAYA_TOOLS = [CREATE_FILE, WEB_SEARCH, APPEND_TO_KB, GET_AGENT_OUTPUT];
 
 // AGENT_TOOLS: used in /api/chat — all agents get all tools; Kai also gets propose_ssh + execute_code + computer use
 export const AGENT_TOOLS: Partial<Record<AgentKey, Anthropic.Tool[]>> = {
@@ -318,6 +340,32 @@ export async function executeAgentTool(
         if (result.results) parts.push(`output:\n${result.results}`);
         if (result.error) parts.push(`error:\n${result.error}`);
         return parts.length > 0 ? parts.join("\n\n") : "(no output)";
+      }
+
+      case "get_agent_output": {
+        if (!context) throw new Error("ToolContext required for get_agent_output");
+        const agentKey = input.agent as string;
+        const limit = Math.min(Number(input.limit ?? 3), 5);
+        const validAgents = ["alex", "jeremy", "kai", "dana", "marcus", "maya"];
+        if (!validAgents.includes(agentKey)) return `Unknown agent: ${agentKey}`;
+
+        const { data, error: rpcError } = await context.supabase.rpc("get_recent_agent_outputs", {
+          p_user_id: context.userId,
+          p_agent_key: agentKey,
+          p_limit: limit,
+        });
+
+        if (rpcError) return `Error fetching ${agentKey}'s outputs: ${rpcError.message}`;
+
+        const outputs = data as Array<{ id: string; prompt: string; result: string; created_at: string }>;
+        if (!outputs?.length) return `No completed outputs found from ${agentKey.charAt(0).toUpperCase() + agentKey.slice(1)}.`;
+
+        return outputs
+          .map((o, i) => {
+            const date = new Date(o.created_at).toLocaleString();
+            return `[Output ${i + 1} — ${date}]\nTask: ${o.prompt}\n\n${o.result}`;
+          })
+          .join("\n\n---\n\n");
       }
 
       default:
