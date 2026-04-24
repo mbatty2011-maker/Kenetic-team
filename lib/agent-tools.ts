@@ -326,15 +326,16 @@ export async function executeAgentTool(
             ? sectionsToText(content.sections)
             : "";
           if (textContent) {
-            context.supabase
-              .from("agent_file_contents")
-              .insert({ user_id: context.userId, title, format, text_content: textContent })
-              .then(({ error }) => {
+            void (async () => {
+              try {
+                const { error } = await context.supabase
+                  .from("agent_file_contents")
+                  .insert({ user_id: context.userId, title, format, text_content: textContent });
                 if (error) console.error("[create_file] content save failed", { title, error: error.message });
-              })
-              .catch((err: unknown) => {
+              } catch (err) {
                 console.error("[create_file] content save threw", { title, error: String(err) });
-              });
+              }
+            })();
           }
 
           return `File created (${sizeLabel}). Include this exact markdown link verbatim in your response so the user can download it:\n[${title}.${format}](${signedUrl})\n\nYou MUST include the markdown link above verbatim in your response. Do not summarise or paraphrase it.`;
