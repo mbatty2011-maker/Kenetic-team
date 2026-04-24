@@ -308,12 +308,24 @@ export async function executeAgentTool(
           const { signedUrl, sizeBytes } = await uploadAgentFile(context.userId, filename, buffer, contentType);
           const kb = Math.round(sizeBytes / 1024);
           const sizeLabel = kb < 1024 ? `${kb} KB` : `${(kb / 1024).toFixed(1)} MB`;
+
+          // Save text content to agent_file_contents so get_agent_output can return it,
+          // but keep it out of the tool result so it doesn't bloat the chat response.
           const textContent = content.sheets?.length
             ? sheetsToText(content.sheets)
             : content.sections?.length
             ? sectionsToText(content.sections)
             : "";
-          return `File created (${sizeLabel}). Include this exact markdown link verbatim in your response so the user can download it:\n[${title}.${format}](${signedUrl})\n\n## Full content\n\n${textContent}\n\nYou MUST include the markdown link above verbatim in your response. Do not summarise or paraphrase it.`;
+          if (textContent) {
+            await context.supabase.from("agent_file_contents").insert({
+              user_id: context.userId,
+              title,
+              format,
+              text_content: textContent,
+            });
+          }
+
+          return `File created (${sizeLabel}). Include this exact markdown link verbatim in your response so the user can download it:\n[${title}.${format}](${signedUrl})\n\nYou MUST include the markdown link above verbatim in your response. Do not summarise or paraphrase it.`;
         } catch (fileErr) {
           const msg = fileErr instanceof Error ? fileErr.message : String(fileErr);
           console.error("[create_file] failed", { title: input.title, format: input.format, error: msg });
@@ -386,23 +398,48 @@ export async function executeAgentTool(
         const validAgents = ["alex", "jeremy", "kai", "dana", "marcus", "maya"];
         if (!validAgents.includes(agentKey)) return `Unknown agent: ${agentKey}`;
 
-        const { data, error: rpcError } = await context.supabase.rpc("get_recent_agent_outputs", {
-          p_user_id: context.userId,
-          p_agent_key: agentKey,
-          p_limit: limit,
-        });
+        const [jobsResult, filesResult] = await Promise.all([
+          context.supabase.rpc("get_recent_agent_outputs", {
+            p_user_id: context.userId,
+            p_agent_key: agentKey,
+            p_limit: limit,
+          }),
+          context.supabase
+            .from("agent_file_contents")
+            .select("title, format, text_content, created_at")
+            .eq("user_id", context.userId)
+            .order("created_at", { ascending: false })
+            .limit(limit),
+        ]);
 
-        if (rpcError) return `Error fetching ${agentKey}'s outputs: ${rpcError.message}`;
+        if (jobsResult.error) return `Error fetching ${agentKey}'s outputs: ${jobsResult.error.message}`;
 
-        const outputs = data as Array<{ id: string; prompt: string; result: string; created_at: string }>;
-        if (!outputs?.length) return `No completed outputs found from ${agentKey.charAt(0).toUpperCase() + agentKey.slice(1)}.`;
+        const outputs = (jobsResult.data as Array<{ id: string; prompt: string; result: string; created_at: string }>) ?? [];
+        const files = (filesResult.data as Array<{ title: string; format: string; text_content: string; created_at: string }>) ?? [];
 
-        return outputs
-          .map((o, i) => {
-            const date = new Date(o.created_at).toLocaleString();
-            return `[Output ${i + 1} — ${date}]\nTask: ${o.prompt}\n\n${o.result}`;
-          })
-          .join("\n\n---\n\n");
+        const sections: string[] = [];
+
+        if (outputs.length) {
+          sections.push(
+            outputs.map((o, i) => {
+              const date = new Date(o.created_at).toLocaleString();
+              return `[Task output ${i + 1} — ${date}]\nTask: ${o.prompt}\n\n${o.result}`;
+            }).join("\n\n---\n\n")
+          );
+        }
+
+        if (files.length) {
+          sections.push(
+            files.map((f, i) => {
+              const date = new Date(f.created_at).toLocaleString();
+              return `[File ${i + 1} — ${f.title}.${f.format} — ${date}]\n\n${f.text_content}`;
+            }).join("\n\n---\n\n")
+          );
+        }
+
+        if (!sections.length) return `No completed outputs found from ${agentKey.charAt(0).toUpperCase() + agentKey.slice(1)}.`;
+
+        return sections.join("\n\n===\n\n");
       }
 
       default:
