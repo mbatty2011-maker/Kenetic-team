@@ -313,10 +313,11 @@ export async function executeAgentTool(
             : content.sections?.length
             ? sectionsToText(content.sections)
             : "";
-          return `File created (${sizeLabel}). Include this exact markdown link verbatim in your response so the user can download it:\n[${title}.${format}](${signedUrl})\n\n## Full content\n\n${textContent}`;
+          return `File created (${sizeLabel}). Include this exact markdown link verbatim in your response so the user can download it:\n[${title}.${format}](${signedUrl})\n\n## Full content\n\n${textContent}\n\nYou MUST include the markdown link above verbatim in your response. Do not summarise or paraphrase it.`;
         } catch (fileErr) {
           const msg = fileErr instanceof Error ? fileErr.message : String(fileErr);
-          return `ERROR: File creation failed — ${msg}. Inform the user the file could not be generated and offer to provide the content as formatted text instead.`;
+          console.error("[create_file] failed", { title: input.title, format: input.format, error: msg });
+          return `TOOL_ERROR: File creation failed with error: "${msg}". STOP. Do not retry. Do not call create_file again. Tell the user immediately that the file could not be generated and why, then offer to paste the content as formatted text in your response.`;
         }
       }
 

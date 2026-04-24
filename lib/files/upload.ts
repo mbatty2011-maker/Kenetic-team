@@ -30,13 +30,19 @@ export async function uploadAgentFile(
     .from("agent-files")
     .upload(path, buffer, { contentType, upsert: false });
 
-  if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`);
+  if (uploadError) {
+    console.error("[uploadAgentFile] storage upload failed", { path, error: uploadError.message });
+    throw new Error(`Storage upload failed: ${uploadError.message}`);
+  }
 
   const { data, error: urlError } = await supabase.storage
     .from("agent-files")
     .createSignedUrl(path, 86400); // 24h
 
-  if (urlError || !data) throw new Error(`Signed URL failed: ${urlError?.message}`);
+  if (urlError || !data) {
+    console.error("[uploadAgentFile] signed URL failed", { path, error: urlError?.message });
+    throw new Error(`Signed URL failed: ${urlError?.message ?? "unknown"}`);
+  }
 
   const sizeBytes = buffer.byteLength;
   // Append size as a non-validated query param so FileCard can display it
