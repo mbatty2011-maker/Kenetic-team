@@ -171,7 +171,7 @@ export const alexWorker = inngest.createFunction(
         try {
           response = await anthropic.messages.create({
             model: "claude-sonnet-4-6",
-            max_tokens: 4096,
+            max_tokens: 8192,
             system: systemPrompt,
             messages,
             tools: allTools,
