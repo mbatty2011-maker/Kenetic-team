@@ -145,8 +145,18 @@ export const alexWorker = inngest.createFunction(
 
       const messages: Anthropic.MessageParam[] = [...historyMessages];
       let finalText = "";
+      // Hard wall: bail out 50s before Vercel's 300s maxDuration to avoid mid-turn kill
+      const loopDeadline = Date.now() + 240_000;
 
       for (let turn = 1; turn <= HARD_LIMIT; turn++) {
+        if (Date.now() > loopDeadline) {
+          console.warn(`[alex-worker] job=${jobId} — deadline hit at turn ${turn}, finishing early`);
+          await appendStep(supabase, jobId, userId, {
+            type: "warning",
+            summary: "Reached time limit — wrapping up with what I have.",
+          });
+          break;
+        }
         // Warn the user on turns 20–29 so they know the job is still running
         if (turn >= SOFT_LIMIT && turn < HARD_LIMIT) {
           console.warn(`[alex-worker] job=${jobId} turn=${turn} — past soft limit, still running`);
@@ -221,78 +231,90 @@ export const alexWorker = inngest.createFunction(
         );
         messages.push({ role: "assistant", content: response.content });
 
-        const toolResults: Anthropic.ToolResultBlockParam[] = [];
+        // Partition into specialist calls (run in parallel) and regular tool calls
+        const specialistUses: Anthropic.ToolUseBlock[] = [];
+        const regularUses: Anthropic.ToolUseBlock[] = [];
 
         for (const tu of toolUses) {
-          const input = tu.input as Record<string, unknown>;
-
-          // Specialist tool
-          const specialistKey = tu.name.startsWith("ask_")
-            ? tu.name.slice(4) // "ask_jeremy" → "jeremy"
-            : null;
-
+          const specialistKey = tu.name.startsWith("ask_") ? tu.name.slice(4) : null;
           if (specialistKey && ["jeremy", "kai", "dana", "marcus", "maya"].includes(specialistKey)) {
-            const question = (input.question as string) ?? "";
-
-            // Remove this specialist's tool immediately — one consultation only
+            specialistUses.push(tu);
+            // Remove each called specialist immediately — one consultation only
             availableSpecialistTools = availableSpecialistTools.filter(t => t.name !== tu.name);
+          } else {
+            regularUses.push(tu);
+          }
+        }
 
-            await appendStep(supabase, jobId, userId, {
-              type: "specialist",
-              summary: `Asking ${capitalize(specialistKey)}…`,
-              detail: question,
-            });
+        // Run ALL specialist calls in parallel so 5 specialists take ~40s, not ~200s
+        const specialistResultMap = new Map<string, string>();
+        if (specialistUses.length > 0) {
+          await Promise.all(
+            specialistUses.map(async (tu) => {
+              const specialistKey = tu.name.slice(4) as "jeremy" | "kai" | "dana" | "marcus" | "maya";
+              const question = (tu.input as Record<string, unknown>).question as string ?? "";
 
-            let specialistResponse: string;
-            try {
-              const agentKey = specialistKey as "jeremy" | "kai" | "dana" | "marcus" | "maya";
-              const agentBrief = `${SYSTEM_PROMPTS[agentKey]}
+              await appendStep(supabase, jobId, userId, {
+                type: "specialist",
+                summary: `Asking ${capitalize(specialistKey)}…`,
+                detail: question,
+              });
+
+              let specialistResponse: string;
+              try {
+                const agentBrief = `${SYSTEM_PROMPTS[specialistKey]}
 
 Alex (Chief of Staff) is consulting you on this specific question:
 "${question}"
 
 Be direct, specific, and actionable. Produce actual content and numbers — not a description of what you will do. Alex will synthesize your input into the final deliverable.`;
 
-              specialistResponse = await callAgentWithTools(
-                agentBrief,
-                [{ role: "user", content: question }],
-                AGENT_TOOLS[agentKey] ?? [],
-                anthropic,
-                4096,
-                { supabase: supabase as unknown as SupabaseClient, userId }
-              );
-            } catch {
-              specialistResponse = `[${capitalize(specialistKey)} encountered an error and could not respond]`;
-            }
+                specialistResponse = await callAgentWithTools(
+                  agentBrief,
+                  [{ role: "user", content: question }],
+                  AGENT_TOOLS[specialistKey] ?? [],
+                  anthropic,
+                  4096,
+                  { supabase: supabase as unknown as SupabaseClient, userId }
+                );
+              } catch {
+                specialistResponse = `[${capitalize(specialistKey)} encountered an error and could not respond]`;
+              }
 
-            // Specialist responses live only in steps, not in messages table
-            await appendStep(supabase, jobId, userId, {
-              type: "specialist_done",
-              summary: `${capitalize(specialistKey)} responded`,
-              detail: specialistResponse.slice(0, 300),
-            });
+              await appendStep(supabase, jobId, userId, {
+                type: "specialist_done",
+                summary: `${capitalize(specialistKey)} responded`,
+                detail: specialistResponse.slice(0, 300),
+              });
 
-            toolResults.push({
-              type: "tool_result",
-              tool_use_id: tu.id,
-              content: specialistResponse,
-            });
-          } else {
-            // Alex's own tools
-            await appendStep(supabase, jobId, userId, {
-              type: "tool_call",
-              summary: tu.name.replace(/_/g, " "),
-              detail: JSON.stringify(input).slice(0, 200),
-            });
-
-            const result = await executeAgentTool(
-              tu.name,
-              input,
-              { supabase: supabase as unknown as SupabaseClient, userId }
-            );
-            toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: result });
-          }
+              specialistResultMap.set(tu.id, specialistResponse);
+            })
+          );
         }
+
+        // Run regular (non-specialist) tools sequentially
+        const regularResultMap = new Map<string, string>();
+        for (const tu of regularUses) {
+          const input = tu.input as Record<string, unknown>;
+          await appendStep(supabase, jobId, userId, {
+            type: "tool_call",
+            summary: tu.name.replace(/_/g, " "),
+            detail: JSON.stringify(input).slice(0, 200),
+          });
+          const toolResult = await executeAgentTool(
+            tu.name,
+            input,
+            { supabase: supabase as unknown as SupabaseClient, userId }
+          );
+          regularResultMap.set(tu.id, toolResult);
+        }
+
+        // Merge results preserving original tool-use order (required by Anthropic API)
+        const toolResults: Anthropic.ToolResultBlockParam[] = toolUses.map((tu) => ({
+          type: "tool_result" as const,
+          tool_use_id: tu.id,
+          content: specialistResultMap.get(tu.id) ?? regularResultMap.get(tu.id) ?? "",
+        }));
 
         messages.push({ role: "user", content: toolResults });
       }
