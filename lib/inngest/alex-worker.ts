@@ -40,13 +40,17 @@ const SPECIALIST_TOOLS: Anthropic.Tool[] = Object.entries(SPECIALIST_DESCRIPTION
 const ALEX_WORKER_SYSTEM = `${SYSTEM_PROMPTS.alex}
 
 ## Specialist tools
-You have direct access to your team. Call them immediately when their domain is relevant — no permission needed.
+You have direct access to your team. Call them when their domain is relevant.
 - ask_jeremy: financial analysis, pricing, unit economics, fundraising
 - ask_kai: technical implementation, code, architecture, debugging
 - ask_dana: sales strategy, outreach, competitive positioning, deal structure
 - ask_marcus: legal, contracts, IP, compliance, regulatory questions
+- ask_maya: positioning copy, pitch narrative, marketing briefs, email drafts
 
-After consulting a specialist, synthesize their input into your final deliverable.`;
+CRITICAL RULES:
+1. Each specialist can only be consulted ONCE per task. Once they respond, their tool is gone.
+2. After ALL required specialists have responded, write the complete final deliverable immediately in your next response — do not ask follow-up questions, do not consult anyone again.
+3. Your final response must be the actual deliverable (the plan, the document, the analysis) — not a description of what you will do.`;
 
 type JobStep = {
   timestamp: string;
@@ -135,10 +139,9 @@ export const alexWorker = inngest.createFunction(
 
     // ── Step 2: Agentic loop ─────────────────────────────────────────────────
     const result = await step.run("agentic-loop", async () => {
-      const allTools: Anthropic.Tool[] = [
-        ...(AGENT_TOOLS.alex ?? []),
-        ...SPECIALIST_TOOLS,
-      ];
+      // Specialist tools are single-use: removed after first consultation so Alex
+      // can't loop back asking the same specialist for more detail.
+      let availableSpecialistTools = [...SPECIALIST_TOOLS];
 
       const messages: Anthropic.MessageParam[] = [...historyMessages];
       let finalText = "";
@@ -174,7 +177,7 @@ export const alexWorker = inngest.createFunction(
             max_tokens: 8192,
             system: systemPrompt,
             messages,
-            tools: allTools,
+            tools: [...(AGENT_TOOLS.alex ?? []), ...availableSpecialistTools],
           });
         } catch (err) {
           if (err instanceof Anthropic.APIError && err.status === 429) {
@@ -230,6 +233,10 @@ export const alexWorker = inngest.createFunction(
 
           if (specialistKey && ["jeremy", "kai", "dana", "marcus", "maya"].includes(specialistKey)) {
             const question = (input.question as string) ?? "";
+
+            // Remove this specialist's tool immediately — one consultation only
+            availableSpecialistTools = availableSpecialistTools.filter(t => t.name !== tu.name);
+
             await appendStep(supabase, jobId, userId, {
               type: "specialist",
               summary: `Asking ${capitalize(specialistKey)}…`,
@@ -244,14 +251,14 @@ export const alexWorker = inngest.createFunction(
 Alex (Chief of Staff) is consulting you on this specific question:
 "${question}"
 
-Be direct, specific, and actionable. Stay in your lane. Alex will synthesize your input.`;
+Be direct, specific, and actionable. Produce actual content and numbers — not a description of what you will do. Alex will synthesize your input into the final deliverable.`;
 
               specialistResponse = await callAgentWithTools(
                 agentBrief,
                 [{ role: "user", content: question }],
                 AGENT_TOOLS[agentKey] ?? [],
                 anthropic,
-                1024,
+                4096,
                 { supabase: supabase as unknown as SupabaseClient, userId }
               );
             } catch {
