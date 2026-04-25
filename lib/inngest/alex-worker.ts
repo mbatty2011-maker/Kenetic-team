@@ -298,13 +298,22 @@ Be direct, specific, and actionable. Stay in your lane. Alex will synthesize you
       // Save Alex's final message to the messages table for conversation history.
       // Specialist responses are intentionally NOT saved here — they live only
       // in alex_jobs.steps to keep the conversation thread clean.
-      await supabase.from("messages").insert({
+      const { error: insertError } = await supabase.from("messages").insert({
         conversation_id: conversationId,
         user_id: userId,
         agent_key: "alex",
         role: "assistant",
         content: result || "(No response generated)",
       });
+
+      if (insertError) {
+        console.error("[alex-worker] persist-result: message insert failed", {
+          jobId,
+          conversationId,
+          error: insertError.message,
+        });
+        throw new Error(`Message insert failed: ${insertError.message}`);
+      }
 
       await supabase
         .from("conversations")

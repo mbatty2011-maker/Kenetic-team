@@ -214,13 +214,22 @@ export function createAgentWorker(agentKey: WorkerAgentKey) {
 
       // ── Step 3: Persist result ────────────────────────────────────────────────
       await step.run("persist-result", async () => {
-        await supabase.from("messages").insert({
+        const { error: insertError } = await supabase.from("messages").insert({
           conversation_id: conversationId,
           user_id: userId,
           agent_key: agentKey,
           role: "assistant",
           content: result || "(No response generated)",
         });
+
+        if (insertError) {
+          console.error(`[${agentKey}-worker] persist-result: message insert failed`, {
+            jobId,
+            conversationId,
+            error: insertError.message,
+          });
+          throw new Error(`Message insert failed: ${insertError.message}`);
+        }
 
         await supabase
           .from("conversations")
