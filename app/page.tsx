@@ -3,18 +3,18 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 
-// Cubic bezier that feels snappy but organic — used everywhere
 const EASE = [0.16, 1, 0.3, 1] as const;
 
-const agents = [
-  { name: "ALEX", role: "Chief of Staff" },
-  { name: "JEREMY", role: "CFO" },
-  { name: "KAI", role: "CTO" },
-  { name: "DANA", role: "Head of Sales" },
-  { name: "MARCUS", role: "General Counsel" },
+const AGENTS = [
+  { initial: "A", name: "ALEX",   role: "Chief of Staff" },
+  { initial: "M", name: "MARCUS", role: "General Counsel" },
+  { initial: "J", name: "JEREMY", role: "CFO" },
+  { initial: "D", name: "DANA",   role: "Head of Sales" },
+  { initial: "M", name: "MAYA",   role: "Head of Marketing" },
+  { initial: "K", name: "KAI",    role: "CTO" },
 ];
 
-const features = [
+const FEATURES = [
   {
     num: "01",
     title: "ALWAYS\nAVAILABLE",
@@ -32,7 +32,52 @@ const features = [
   },
 ];
 
-// Theatrical text reveal: parent clips, child rises from below the mask
+const PLANS = [
+  {
+    name: "SOLO",
+    price: 79,
+    tagline: "For the individual founder starting out.",
+    features: [
+      "All 6 AI agents",
+      "15 messages per agent / month",
+      "7-day agent memory",
+      "File generation (PDF, DOCX, XLSX)",
+      "Email drafting",
+    ],
+    featured: false,
+  },
+  {
+    name: "STARTUP",
+    price: 199,
+    tagline: "Everything you need to run your company with AI.",
+    features: [
+      "All 6 AI agents",
+      "Unlimited messages",
+      "1-year agent memory",
+      "File generation (PDF, DOCX, XLSX)",
+      "Email drafting",
+      "Priority support",
+    ],
+    featured: true,
+  },
+  {
+    name: "SCALE",
+    price: 499,
+    tagline: "For teams that run entirely on AI.",
+    features: [
+      "All 6 AI agents",
+      "Team seats — unlimited",
+      "Unlimited everything",
+      "1-year agent memory",
+      "File generation (PDF, DOCX, XLSX)",
+      "Email drafting",
+      "Priority support",
+      "Dedicated onboarding",
+    ],
+    featured: false,
+  },
+];
+
 function HeroLine({
   children,
   delay,
@@ -53,7 +98,6 @@ function HeroLine({
   );
 }
 
-// Fade + lift reveal triggered when the element enters the viewport
 function ScrollReveal({
   children,
   delay = 0,
@@ -79,11 +123,7 @@ export default function Home() {
       className="bg-black text-white selection:bg-white selection:text-black"
       style={{ fontFamily: "var(--font-space-grotesk), system-ui, sans-serif" }}
     >
-      {/* ── NAV ──────────────────────────────────────────────────
-          mix-blend-mode: difference makes this nav automatically
-          invert: white on black sections, black on the white team
-          section — zero manual colour switching needed.
-      ─────────────────────────────────────────────────────────── */}
+      {/* ── NAV ──────────────────────────────────────────────────── */}
       <motion.nav
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -107,16 +147,11 @@ export default function Home() {
         </Link>
       </motion.nav>
 
-      {/* ── HERO ─────────────────────────────────────────────────
-          Full viewport. Massive headline reveals word by word.
-          Horizontal rule animates scaleX from left after the
-          headline lands. CTA + subtext appear last.
-      ─────────────────────────────────────────────────────────── */}
+      {/* ── HERO ─────────────────────────────────────────────────── */}
       <section
         className="min-h-screen flex flex-col justify-between px-8 pt-32 pb-12"
         aria-label="Hero"
       >
-        {/* Label */}
         <div className="overflow-hidden">
           <motion.p
             initial={{ y: "100%" }}
@@ -129,7 +164,6 @@ export default function Home() {
           </motion.p>
         </div>
 
-        {/* Headline */}
         <div>
           <HeroLine delay={0.4}>
             <h1 className="text-[clamp(3rem,9.5vw,9rem)] font-bold tracking-tight uppercase pb-1">
@@ -148,7 +182,6 @@ export default function Home() {
           </HeroLine>
         </div>
 
-        {/* Rule + bottom row */}
         <div>
           <motion.div
             initial={{ scaleX: 0 }}
@@ -168,7 +201,7 @@ export default function Home() {
               <br />
               General Counsel · Chief of Staff
               <br />
-              Available instantly, 24/7.
+              Head of Marketing · Available 24/7.
             </motion.p>
             <motion.div
               initial={{ opacity: 0, y: 10 }}
@@ -191,17 +224,62 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── VALUE PROPS ──────────────────────────────────────────
-          3-column grid. Vertical dividers on desktop,
-          horizontal dividers on mobile. Numbered in mono.
-          Each column staggers in as it enters view.
-      ─────────────────────────────────────────────────────────── */}
-      <section
-        className="border-t border-white py-24 px-8"
-        aria-label="Why knetc"
-      >
+      {/* ── AGENT SHOWCASE ───────────────────────────────────────── */}
+      <section className="border-t border-white px-8 py-24" aria-label="Meet the team">
+        <ScrollReveal>
+          <p
+            className="text-xs uppercase tracking-[0.3em] mb-14"
+            style={{ fontFamily: "var(--font-space-mono), monospace" }}
+          >
+            Meet The Team
+          </p>
+        </ScrollReveal>
+
+        {/* gap-px bg-white: parent white bg shows through as 1px white dividers */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-px bg-white border border-white">
+          {AGENTS.map((agent, i) => (
+            <motion.div
+              key={agent.name}
+              initial={{ opacity: 0 }}
+              whileInView={{ opacity: 1 }}
+              viewport={{ once: true, margin: "-60px" }}
+              transition={{ duration: 0.6, delay: i * 0.08, ease: EASE }}
+              className="relative bg-black group overflow-hidden aspect-square flex flex-col justify-between p-6 sm:p-8 cursor-default"
+            >
+              {/* Wipe fill from bottom on hover */}
+              <div className="absolute inset-0 bg-white origin-bottom scale-y-0 group-hover:scale-y-100 transition-transform duration-300 ease-out" />
+
+              <span
+                className="relative z-10 font-bold text-white group-hover:text-black transition-colors duration-200"
+                style={{
+                  fontSize: "clamp(2rem, 5vw, 3.5rem)",
+                  fontFamily: "var(--font-space-grotesk), sans-serif",
+                  lineHeight: 1,
+                }}
+              >
+                {agent.initial}
+              </span>
+
+              <div className="relative z-10">
+                <p className="font-bold uppercase text-sm text-white group-hover:text-black transition-colors duration-200 leading-none">
+                  {agent.name}
+                </p>
+                <p
+                  className="text-xs text-white/50 group-hover:text-black/60 transition-colors duration-200 mt-1"
+                  style={{ fontFamily: "var(--font-space-mono), monospace" }}
+                >
+                  {agent.role}
+                </p>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── VALUE PROPS ──────────────────────────────────────────── */}
+      <section className="border-t border-white py-24 px-8" aria-label="Why knetc">
         <div className="grid grid-cols-1 lg:grid-cols-3">
-          {features.map((f, i) => (
+          {FEATURES.map((f, i) => (
             <ScrollReveal key={f.num} delay={i * 0.12}>
               <div
                 className={[
@@ -209,7 +287,7 @@ export default function Home() {
                   i > 0
                     ? "border-t border-white lg:border-t-0 lg:border-l lg:pl-10"
                     : "",
-                  i < features.length - 1 ? "lg:pr-10" : "",
+                  i < FEATURES.length - 1 ? "lg:pr-10" : "",
                 ].join(" ")}
               >
                 <p
@@ -233,52 +311,200 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── TEAM ─────────────────────────────────────────────────
-          Full colour inversion — white background, black text.
-          The scroll from black → white is itself a design beat.
-          Names are enormous; roles are monospaced, minimal.
-      ─────────────────────────────────────────────────────────── */}
-      <section className="bg-white text-black px-8 py-24" aria-label="The team">
+      {/* ── THE BOARDROOM ────────────────────────────────────────── */}
+      <section className="bg-white text-black px-8 py-24" aria-label="The Boardroom">
+        <div className="max-w-4xl">
+          <ScrollReveal>
+            <p
+              className="text-xs uppercase tracking-[0.3em] mb-14"
+              style={{ fontFamily: "var(--font-space-mono), monospace" }}
+            >
+              The Boardroom
+            </p>
+          </ScrollReveal>
+
+          <ScrollReveal delay={0.1}>
+            <h2 className="text-[clamp(2.2rem,6vw,5.5rem)] font-bold uppercase tracking-tight leading-none mb-10">
+              All Six.
+              <br />
+              One Brief.
+            </h2>
+          </ScrollReveal>
+
+          <ScrollReveal delay={0.2}>
+            <p
+              className="text-sm leading-[2] max-w-md mb-14"
+              style={{ fontFamily: "var(--font-space-mono), monospace" }}
+            >
+              Ask one question and every agent responds. Alex synthesises their
+              answers into a single executive brief — and sends it to your inbox.
+              Your boardroom, on demand.
+            </p>
+          </ScrollReveal>
+
+          {/* Agent name cards — gap-px bg-black on white section */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-px bg-black border border-black mb-10">
+            {AGENTS.map((agent, i) => (
+              <motion.div
+                key={agent.name}
+                initial={{ opacity: 0 }}
+                whileInView={{ opacity: 1 }}
+                viewport={{ once: true, margin: "-60px" }}
+                transition={{ duration: 0.5, delay: 0.3 + i * 0.06, ease: EASE }}
+                className="bg-white px-5 py-4"
+              >
+                <p
+                  className="text-xs font-bold uppercase tracking-widest"
+                  style={{ fontFamily: "var(--font-space-mono), monospace" }}
+                >
+                  {agent.name}
+                </p>
+                <p
+                  className="text-xs text-black/50 mt-0.5"
+                  style={{ fontFamily: "var(--font-space-mono), monospace" }}
+                >
+                  {agent.role}
+                </p>
+              </motion.div>
+            ))}
+          </div>
+
+          <ScrollReveal delay={0.5}>
+            <div className="border-t border-black pt-8 flex items-center gap-5">
+              <div className="w-2 h-2 bg-black flex-shrink-0" />
+              <p
+                className="text-xs uppercase tracking-widest"
+                style={{ fontFamily: "var(--font-space-mono), monospace" }}
+              >
+                Synthesis delivered to your inbox in minutes
+              </p>
+            </div>
+          </ScrollReveal>
+        </div>
+      </section>
+
+      {/* ── PRICING ──────────────────────────────────────────────── */}
+      <section className="border-t border-white py-24 px-8" aria-label="Pricing">
         <ScrollReveal>
           <p
             className="text-xs uppercase tracking-[0.3em] mb-14"
             style={{ fontFamily: "var(--font-space-mono), monospace" }}
           >
-            Your Team
+            Pricing
           </p>
         </ScrollReveal>
-        <div role="list">
-          {agents.map((agent, i) => (
-            <ScrollReveal key={agent.name} delay={i * 0.07}>
-              <div
-                role="listitem"
-                className="flex items-center justify-between py-5 border-t border-black last:border-b"
-              >
-                <span className="text-[clamp(1.8rem,5.5vw,4.5rem)] font-bold uppercase tracking-tight leading-none">
-                  {agent.name}
-                </span>
-                <span
-                  className="text-xs uppercase tracking-widest"
+
+        <ScrollReveal delay={0.08}>
+          <h2 className="text-[clamp(2rem,6vw,5rem)] font-bold uppercase tracking-tight leading-none mb-16">
+            One Team.
+            <br />
+            Three Plans.
+          </h2>
+        </ScrollReveal>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-px bg-white border border-white">
+          {PLANS.map((plan, i) => (
+            <motion.div
+              key={plan.name}
+              initial={{ opacity: 0, y: 28 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-60px" }}
+              transition={{ duration: 0.75, delay: i * 0.1, ease: EASE }}
+              className={[
+                "flex flex-col p-8 h-full",
+                plan.featured ? "bg-white text-black" : "bg-black text-white",
+              ].join(" ")}
+            >
+              <div className="flex items-start justify-between mb-6">
+                <p
+                  className="text-xs font-bold uppercase tracking-widest"
                   style={{ fontFamily: "var(--font-space-mono), monospace" }}
                 >
-                  {agent.role}
+                  {plan.name}
+                </p>
+                {plan.featured && (
+                  <span
+                    className="text-[10px] font-bold uppercase tracking-widest bg-black text-white px-2 py-1"
+                    style={{ fontFamily: "var(--font-space-mono), monospace" }}
+                  >
+                    Most Popular
+                  </span>
+                )}
+              </div>
+
+              <div className="mb-4 flex items-baseline gap-1.5">
+                <span
+                  className="font-bold leading-none"
+                  style={{
+                    fontSize: "clamp(2.5rem, 5vw, 4rem)",
+                    fontFamily: "var(--font-space-grotesk), sans-serif",
+                  }}
+                >
+                  ${plan.price}
+                </span>
+                <span
+                  className={[
+                    "text-xs",
+                    plan.featured ? "text-black/50" : "text-white/50",
+                  ].join(" ")}
+                  style={{ fontFamily: "var(--font-space-mono), monospace" }}
+                >
+                  /mo
                 </span>
               </div>
-            </ScrollReveal>
+
+              <p
+                className={[
+                  "text-xs leading-relaxed mb-8",
+                  plan.featured ? "text-black/60" : "text-white/50",
+                ].join(" ")}
+                style={{ fontFamily: "var(--font-space-mono), monospace" }}
+              >
+                {plan.tagline}
+              </p>
+
+              <ul className="space-y-3 mb-10 flex-1">
+                {plan.features.map((feat) => (
+                  <li key={feat} className="flex items-start gap-3">
+                    <div
+                      className={[
+                        "w-1.5 h-1.5 mt-1.5 flex-shrink-0",
+                        plan.featured ? "bg-black" : "bg-white",
+                      ].join(" ")}
+                    />
+                    <span
+                      className={[
+                        "text-xs leading-relaxed",
+                        plan.featured ? "text-black/80" : "text-white/70",
+                      ].join(" ")}
+                      style={{ fontFamily: "var(--font-space-mono), monospace" }}
+                    >
+                      {feat}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+
+              <Link
+                href="/signup"
+                aria-label={`Sign up for the ${plan.name} plan`}
+                className={[
+                  "block text-center py-3.5 text-xs font-bold uppercase tracking-widest border transition-colors duration-200",
+                  plan.featured
+                    ? "bg-black text-white border-black hover:bg-white hover:text-black"
+                    : "bg-white text-black border-white hover:bg-black hover:text-white",
+                ].join(" ")}
+                style={{ fontFamily: "var(--font-space-mono), monospace" }}
+              >
+                Get Started
+              </Link>
+            </motion.div>
           ))}
         </div>
       </section>
 
-      {/* ── CTA ──────────────────────────────────────────────────
-          Back to black. Centred, maximal. The headline and
-          button land with staggered scroll reveals so the
-          section builds as the user arrives at it.
-          Button inverts on hover — the defining interaction.
-      ─────────────────────────────────────────────────────────── */}
-      <section
-        className="py-40 px-8 text-center"
-        aria-label="Call to action"
-      >
+      {/* ── CTA ──────────────────────────────────────────────────── */}
+      <section className="py-40 px-8 text-center" aria-label="Call to action">
         <ScrollReveal>
           <p
             className="text-xs uppercase tracking-[0.3em] mb-10"
@@ -314,7 +540,7 @@ export default function Home() {
         </ScrollReveal>
       </section>
 
-      {/* ── FOOTER ───────────────────────────────────────────── */}
+      {/* ── FOOTER ───────────────────────────────────────────────── */}
       <footer className="border-t border-white px-8 py-8 flex items-center justify-between">
         <span
           className="text-xs font-bold tracking-[0.25em] uppercase"
