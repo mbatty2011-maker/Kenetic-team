@@ -268,6 +268,7 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
   }
 
   async function handleBoardroomMessage(content: string, cid: string, uid: string) {
+    void uid; // DB saves are handled server-side in the boardroom route
     try {
       const res = await fetch("/api/boardroom", {
         method: "POST",
@@ -285,39 +286,110 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
           });
           return;
         }
-        throw new Error(detail?.error ?? "API error");
+        throw new Error(detail?.error ?? `API error ${res.status}`);
       }
-      const { responses } = await res.json();
+      if (!res.body) throw new Error("No response body");
 
-      for (const resp of responses) {
-        if (!resp.content?.trim()) continue;
-        const msg: Message = {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: resp.content,
-          agent_key: resp.agentKey,
-          created_at: new Date().toISOString(),
-        };
-        setMessages((prev) => [...prev, msg]);
-        await supabase.from("messages").insert({
-          conversation_id: cid,
-          user_id: uid,
-          agent_key: resp.agentKey,
-          role: "assistant",
-          content: resp.content,
-        });
+      // Stream SSE — each agent's response appears the instant it finishes
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      setToolStatus("Consulting the team…");
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const rawData = line.slice(6).trim();
+
+          // Parse JSON separately so malformed chunks are skipped without
+          // catching real errors thrown below in the switch.
+          let parsed: {
+            type: string;
+            message?: string;
+            agentKey?: string;
+            content?: string;
+            tier?: string;
+            limit?: number;
+            current?: number;
+          } | null = null;
+          try { parsed = JSON.parse(rawData); } catch { continue; }
+          if (!parsed) continue;
+
+          switch (parsed.type) {
+            case "status":
+              setToolStatus(parsed.message ?? null);
+              break;
+
+            case "agent_response":
+              setToolStatus(null);
+              if (parsed.content?.trim()) {
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    id: crypto.randomUUID(),
+                    role: "assistant" as const,
+                    content: parsed.content!,
+                    agent_key: parsed.agentKey,
+                    created_at: new Date().toISOString(),
+                  },
+                ]);
+              }
+              break;
+
+            case "synthesizing":
+              setToolStatus("Alex synthesising…");
+              break;
+
+            case "synthesis":
+              setToolStatus(null);
+              if (parsed.content?.trim()) {
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    id: crypto.randomUUID(),
+                    role: "assistant" as const,
+                    content: parsed.content!,
+                    agent_key: parsed.agentKey ?? "alex",
+                    created_at: new Date().toISOString(),
+                  },
+                ]);
+              }
+              break;
+
+            case "limit_reached":
+              setUpgradePrompt({
+                reason: "Monthly Boardroom session limit reached",
+                limitHit: `${parsed.current} of ${parsed.limit} sessions used this month`,
+                tier: parsed.tier ?? "free",
+              });
+              break;
+
+            case "error":
+              throw new Error(parsed.message ?? "Boardroom error");
+
+            case "done":
+              break;
+          }
+        }
       }
 
-      await supabase
-        .from("conversations")
-        .update({ updated_at: new Date().toISOString() })
-        .eq("id", cid);
-    } catch {
+      setToolStatus(null);
+    } catch (err) {
+      setToolStatus(null);
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[boardroom] stream error:", msg);
       setMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
-          role: "assistant",
+          role: "assistant" as const,
           content: "Something went wrong. Please try again.",
           agent_key: "boardroom",
           created_at: new Date().toISOString(),
