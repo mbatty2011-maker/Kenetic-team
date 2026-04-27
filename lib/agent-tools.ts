@@ -7,6 +7,7 @@ import { appendToKnowledgeBase } from "./tools/knowledge";
 import { executeCode } from "./tools/codeExecution";
 import type { DocumentSection, XlsxSheet } from "./files/types";
 import { uploadAgentFile, sanitizeFilename } from "./files/upload";
+import { getUserTier } from "./tier";
 
 export type ToolContext = { supabase: SupabaseClient; userId: string };
 
@@ -280,6 +281,12 @@ export async function executeAgentTool(
   try {
     switch (name) {
       case "create_file": {
+        // File generation is gated to paid plans
+        const fileTier = await getUserTier(context.supabase, context.userId);
+        if (fileTier === "free") {
+          return "TOOL_ERROR: File generation requires a Solo plan or higher. Upgrade at knetc.team/pricing. STOP. Do not retry. Tell the user they need to upgrade to generate files.";
+        }
+
         const format  = input.format as "docx" | "xlsx" | "pdf";
         const title   = ((input.title as string) ?? "").trim();
         const content = (input.content ?? {}) as { sections?: DocumentSection[]; sheets?: XlsxSheet[] };

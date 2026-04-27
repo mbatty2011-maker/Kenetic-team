@@ -6,6 +6,7 @@ import { SYSTEM_PROMPTS, type AgentKey } from "@/lib/agents";
 import { readKnowledgeBase } from "@/lib/tools/knowledge";
 import { AGENT_TOOLS, callAgentWithTools } from "@/lib/agent-tools";
 import { getUserContext, buildUserSection } from "@/lib/tools/user-context";
+import { getUserTier, BOARDROOM_SESSION_LIMITS, currentMonth } from "@/lib/tier";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -46,6 +47,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid message" }, { status: 400 });
   if (!conversationId || typeof conversationId !== "string")
     return NextResponse.json({ error: "Invalid conversationId" }, { status: 400 });
+
+  // Boardroom session limit
+  const tier = await getUserTier(supabase, user.id);
+  const sessionLimit = BOARDROOM_SESSION_LIMITS[tier];
+  const month = currentMonth();
+
+  if (sessionLimit !== Infinity) {
+    const { data: rpcData, error: rpcError } = await supabase.rpc(
+      "check_and_increment_boardroom_count",
+      { p_user_id: user.id, p_month: month, p_limit: sessionLimit }
+    );
+    if (rpcError) {
+      console.error("[boardroom] session count check failed:", rpcError.message);
+    } else {
+      const result = (rpcData as Array<{ allowed: boolean; current_count: number }> | null)?.[0];
+      if (result && !result.allowed) {
+        return NextResponse.json(
+          { error: "limit_reached", tier, limit: sessionLimit, current: result.current_count },
+          { status: 429 }
+        );
+      }
+    }
+  }
 
   // Load boardroom history
   const { data: history } = await supabase

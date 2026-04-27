@@ -8,6 +8,7 @@ import MessageBubble from "./MessageBubble";
 import TypingIndicator from "./TypingIndicator";
 import ChatInput from "./ChatInput";
 import AgentHeader from "./AgentHeader";
+import UpgradePrompt from "@/components/UpgradePrompt";
 
 interface Message {
   id: string;
@@ -28,6 +29,11 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
   const [isSearching, setIsSearching] = useState(false);
   const [toolStatus, setToolStatus] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [upgradePrompt, setUpgradePrompt] = useState<{
+    reason: string;
+    limitHit: string;
+    tier: string;
+  } | null>(null);
   const isNewConvoRef = useRef(false);
 
   const agent = agentKey !== "boardroom" ? AGENTS.find((a) => a.key === agentKey) : null;
@@ -143,6 +149,15 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
 
       if (!res.ok) {
         const detail = await res.json().catch(() => null);
+        if (detail?.error === "limit_reached") {
+          setMessages((prev) => prev.filter((m) => m.id !== streamingId));
+          setUpgradePrompt({
+            reason: `Monthly ${agent?.name ?? agentKey} message limit reached`,
+            limitHit: `${detail.current} of ${detail.limit} messages used this month`,
+            tier: detail.tier,
+          });
+          return;
+        }
         throw new Error(detail?.error ?? `API error ${res.status}`);
       }
       if (!res.body) throw new Error("No response body");
@@ -245,7 +260,18 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
         body: JSON.stringify({ message: content, conversationId: cid }),
       });
 
-      if (!res.ok) throw new Error("API error");
+      if (!res.ok) {
+        const detail = await res.json().catch(() => null);
+        if (detail?.error === "limit_reached") {
+          setUpgradePrompt({
+            reason: "Monthly Boardroom session limit reached",
+            limitHit: `${detail.current} of ${detail.limit} sessions used this month`,
+            tier: detail.tier,
+          });
+          return;
+        }
+        throw new Error(detail?.error ?? "API error");
+      }
       const { responses } = await res.json();
 
       for (const resp of responses) {
@@ -352,6 +378,15 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
 
       {/* Input */}
       <ChatInput onSend={sendMessage} isLoading={isLoading} agentKey={agentKey} />
+
+      {upgradePrompt && (
+        <UpgradePrompt
+          reason={upgradePrompt.reason}
+          limitHit={upgradePrompt.limitHit}
+          tier={upgradePrompt.tier}
+          onDismiss={() => setUpgradePrompt(null)}
+        />
+      )}
     </div>
   );
 }

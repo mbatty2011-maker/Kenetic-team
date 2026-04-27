@@ -10,6 +10,12 @@ import { readKnowledgeBase } from "@/lib/tools/knowledge";
 import { AGENT_TOOLS, executeAgentTool, TOOL_LABELS } from "@/lib/agent-tools";
 import { getUserContext, buildUserSection } from "@/lib/tools/user-context";
 import { checkDailyLimit } from "@/lib/rate-limit";
+import {
+  getUserTier,
+  MONTHLY_MESSAGE_LIMITS,
+  MEMORY_DAYS,
+  currentMonth,
+} from "@/lib/tier";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
@@ -51,7 +57,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid agent" }, { status: 400 });
   }
 
-  const { allowed, count, limit } = await checkDailyLimit(supabase, user.id);
+  // Daily throttle + tier resolution in parallel
+  const [{ allowed, count, limit }, tier] = await Promise.all([
+    checkDailyLimit(supabase, user.id),
+    getUserTier(supabase, user.id),
+  ]);
+
   if (!allowed) {
     return NextResponse.json(
       { error: `Daily limit reached (${count}/${limit} messages). Resets at midnight.` },
@@ -59,16 +70,47 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Monthly per-agent limit
+  const messageLimit = MONTHLY_MESSAGE_LIMITS[tier];
+  const month = currentMonth();
+
+  if (messageLimit !== Infinity) {
+    const { data: rpcData, error: rpcError } = await supabase.rpc(
+      "check_and_increment_message_count",
+      { p_user_id: user.id, p_agent_key: agentKey, p_month: month, p_limit: messageLimit }
+    );
+    if (rpcError) {
+      console.error("[chat] message count check failed:", rpcError.message);
+    } else {
+      const result = (rpcData as Array<{ allowed: boolean; current_count: number }> | null)?.[0];
+      if (result && !result.allowed) {
+        return NextResponse.json(
+          { error: "limit_reached", tier, limit: messageLimit, current: result.current_count },
+          { status: 429 }
+        );
+      }
+    }
+  }
+
   const agentTools = AGENT_TOOLS[agentKey] ?? [];
 
-  // Load conversation history, knowledge base, and user context in parallel
+  // History date cutoff based on plan
+  const memoryCutoffDays = MEMORY_DAYS[tier];
+  const memoryFrom = memoryCutoffDays !== null
+    ? new Date(Date.now() - memoryCutoffDays * 24 * 60 * 60 * 1000).toISOString()
+    : null;
+
   const [historyResult, knowledgeBase, userContext] = await Promise.all([
-    supabase
-      .from("messages")
-      .select("role, content")
-      .eq("conversation_id", conversationId)
-      .order("created_at", { ascending: false })
-      .limit(20),
+    memoryFrom
+      ? supabase.from("messages").select("role, content")
+          .eq("conversation_id", conversationId)
+          .gte("created_at", memoryFrom)
+          .order("created_at", { ascending: false })
+          .limit(20)
+      : supabase.from("messages").select("role, content")
+          .eq("conversation_id", conversationId)
+          .order("created_at", { ascending: false })
+          .limit(20),
     readKnowledgeBase(supabase, user.id),
     getUserContext(supabase, user.id),
   ]);
@@ -79,10 +121,16 @@ export async function POST(req: NextRequest) {
     .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
 
   const userSection = buildUserSection(userContext, user.email ?? "");
+
+  const memoryNote = memoryCutoffDays !== null
+    ? `[System: This user's plan limits conversation memory to the past ${memoryCutoffDays} days. Older messages have been excluded from context.]`
+    : "";
+
   const systemPrompt = [
     SYSTEM_PROMPTS[agentKey],
     knowledgeBase ? `---\n## Knowledge Base (live)\n${knowledgeBase}\n---` : "",
     userSection,
+    memoryNote,
   ].filter(Boolean).join("\n\n");
 
   const initialMessages: Anthropic.MessageParam[] = [
