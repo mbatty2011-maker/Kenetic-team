@@ -107,10 +107,10 @@ function ScrollReveal({
 }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 28 }}
+      initial={{ opacity: 0, y: 32 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-60px" }}
-      transition={{ duration: 0.75, delay, ease: EASE }}
+      transition={{ duration: 0.8, delay, ease: EASE }}
     >
       {children}
     </motion.div>
@@ -123,7 +123,9 @@ export default function Home() {
       className="bg-black text-white selection:bg-white selection:text-black"
       style={{ fontFamily: "var(--font-space-grotesk), system-ui, sans-serif" }}
     >
-      {/* ── NAV ──────────────────────────────────────────────────── */}
+      {/* ── NAV ──────────────────────────────────────────────────────
+          mix-blend-mode: difference auto-inverts over white sections.
+      ──────────────────────────────────────────────────────────── */}
       <motion.nav
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -132,7 +134,7 @@ export default function Home() {
         style={{ mixBlendMode: "difference" }}
       >
         <span
-          className="text-white text-sm font-bold tracking-[0.25em] uppercase"
+          className="text-white text-base font-bold tracking-[0.25em] uppercase"
           style={{ fontFamily: "var(--font-space-mono), monospace" }}
         >
           KNETC
@@ -140,61 +142,67 @@ export default function Home() {
         <Link
           href="/signup"
           aria-label="Sign up for knetc for free"
-          className="text-white border border-white text-xs font-bold uppercase tracking-widest px-5 py-2.5 hover:bg-white hover:text-black transition-colors duration-200"
+          className="text-white border border-white text-sm font-bold uppercase tracking-widest px-6 py-3 hover:bg-white hover:text-black transition-colors duration-200"
           style={{ fontFamily: "var(--font-space-mono), monospace" }}
         >
           Sign Up Free
         </Link>
       </motion.nav>
 
-      {/* ── HERO ─────────────────────────────────────────────────── */}
+      {/* ── HERO ─────────────────────────────────────────────────────
+          Full viewport height. Headline reveals word by word.
+          Rule scaleX animates after headline lands.
+      ──────────────────────────────────────────────────────────── */}
       <section
-        className="min-h-screen flex flex-col justify-between px-8 pt-32 pb-12"
+        className="min-h-screen flex flex-col justify-between px-8 pt-36 pb-14"
         aria-label="Hero"
       >
+        {/* Eyebrow label */}
         <div className="overflow-hidden">
           <motion.p
             initial={{ y: "100%" }}
             animate={{ y: "0%" }}
             transition={{ duration: 0.7, delay: 0.2, ease: EASE }}
-            className="text-xs uppercase tracking-[0.3em]"
+            className="text-sm uppercase tracking-[0.3em]"
             style={{ fontFamily: "var(--font-space-mono), monospace" }}
           >
             AI Executive Team · Always On
           </motion.p>
         </div>
 
+        {/* Headline — theatrical mask reveal */}
         <div>
           <HeroLine delay={0.4}>
-            <h1 className="text-[clamp(3rem,9.5vw,9rem)] font-bold tracking-tight uppercase pb-1">
+            <h1 className="text-[clamp(4rem,12vw,11rem)] font-bold tracking-tight uppercase pb-2">
               Your
             </h1>
           </HeroLine>
           <HeroLine delay={0.58}>
-            <h1 className="text-[clamp(3rem,9.5vw,9rem)] font-bold tracking-tight uppercase pb-1">
+            <h1 className="text-[clamp(4rem,12vw,11rem)] font-bold tracking-tight uppercase pb-2">
               Executive
             </h1>
           </HeroLine>
           <HeroLine delay={0.76}>
-            <h1 className="text-[clamp(3rem,9.5vw,9rem)] font-bold tracking-tight uppercase">
+            <h1 className="text-[clamp(4rem,12vw,11rem)] font-bold tracking-tight uppercase">
               Team.
             </h1>
           </HeroLine>
         </div>
 
+        {/* Rule + bottom row */}
         <div>
           <motion.div
             initial={{ scaleX: 0 }}
             animate={{ scaleX: 1 }}
             transition={{ duration: 1.1, delay: 1.0, ease: EASE }}
-            className="h-px bg-white origin-left mb-8"
+            className="h-px bg-white origin-left mb-10"
           />
           <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-8">
             <motion.p
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.7, delay: 1.15 }}
-              className="text-sm leading-[1.8] max-w-xs"
+              className="text-lg leading-[1.9] max-w-sm"
               style={{ fontFamily: "var(--font-space-mono), monospace" }}
             >
               CFO · CTO · Head of Sales
@@ -211,7 +219,7 @@ export default function Home() {
               <Link
                 href="/signup"
                 aria-label="Sign up for knetc for free"
-                className="group inline-flex items-center gap-3 bg-white text-black px-8 py-4 text-sm font-bold uppercase tracking-widest hover:bg-black hover:text-white border border-white transition-colors duration-300"
+                className="group inline-flex items-center gap-4 bg-white text-black px-10 py-5 text-base font-bold uppercase tracking-widest hover:bg-black hover:text-white border border-white transition-colors duration-300"
                 style={{ fontFamily: "var(--font-space-mono), monospace" }}
               >
                 Sign Up Free
@@ -224,48 +232,63 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── AGENT SHOWCASE ───────────────────────────────────────── */}
-      <section className="border-t border-white px-8 py-24" aria-label="Meet the team">
+      {/* ── AGENT SHOWCASE ───────────────────────────────────────────
+          3×2 grid. gap-px bg-white: parent exposes 1px white lines
+          between black cells — clean dividers with no double borders.
+          Hover: CSS fill wipe from bottom (no Framer needed).
+      ──────────────────────────────────────────────────────────── */}
+      <section className="border-t border-white px-8 py-28" aria-label="Meet the team">
         <ScrollReveal>
-          <p
-            className="text-xs uppercase tracking-[0.3em] mb-14"
-            style={{ fontFamily: "var(--font-space-mono), monospace" }}
-          >
-            Meet The Team
-          </p>
+          <div className="flex items-baseline justify-between mb-16">
+            <p
+              className="text-sm uppercase tracking-[0.3em]"
+              style={{ fontFamily: "var(--font-space-mono), monospace" }}
+            >
+              Meet The Team
+            </p>
+            <p
+              className="text-sm text-white/40"
+              style={{ fontFamily: "var(--font-space-mono), monospace" }}
+            >
+              6 agents
+            </p>
+          </div>
         </ScrollReveal>
 
-        {/* gap-px bg-white: parent white bg shows through as 1px white dividers */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-px bg-white border border-white">
           {AGENTS.map((agent, i) => (
             <motion.div
               key={agent.name}
               initial={{ opacity: 0 }}
               whileInView={{ opacity: 1 }}
-              viewport={{ once: true, margin: "-60px" }}
-              transition={{ duration: 0.6, delay: i * 0.08, ease: EASE }}
-              className="relative bg-black group overflow-hidden aspect-square flex flex-col justify-between p-6 sm:p-8 cursor-default"
+              viewport={{ once: true, margin: "-40px" }}
+              transition={{ duration: 0.55, delay: i * 0.09, ease: EASE }}
+              className="relative bg-black group overflow-hidden flex flex-col justify-between p-6 sm:p-10 min-h-[200px] sm:min-h-[300px]"
             >
-              {/* Wipe fill from bottom on hover */}
+              {/* Fill wipe from bottom on hover */}
               <div className="absolute inset-0 bg-white origin-bottom scale-y-0 group-hover:scale-y-100 transition-transform duration-300 ease-out" />
 
+              {/* Initial letter */}
               <span
-                className="relative z-10 font-bold text-white group-hover:text-black transition-colors duration-200"
+                className="relative z-10 font-bold text-white group-hover:text-black transition-colors duration-200 select-none"
                 style={{
-                  fontSize: "clamp(2rem, 5vw, 3.5rem)",
                   fontFamily: "var(--font-space-grotesk), sans-serif",
+                  fontSize: "clamp(2.5rem, 6vw, 5rem)",
                   lineHeight: 1,
                 }}
               >
                 {agent.initial}
               </span>
 
+              {/* Name + role — always legible */}
               <div className="relative z-10">
-                <p className="font-bold uppercase text-sm text-white group-hover:text-black transition-colors duration-200 leading-none">
+                <p
+                  className="font-bold uppercase text-white group-hover:text-black transition-colors duration-200 leading-tight text-base sm:text-xl"
+                >
                   {agent.name}
                 </p>
                 <p
-                  className="text-xs text-white/50 group-hover:text-black/60 transition-colors duration-200 mt-1"
+                  className="text-white/50 group-hover:text-black/60 transition-colors duration-200 mt-1 text-sm sm:text-base"
                   style={{ fontFamily: "var(--font-space-mono), monospace" }}
                 >
                   {agent.role}
@@ -276,31 +299,35 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── VALUE PROPS ──────────────────────────────────────────── */}
-      <section className="border-t border-white py-24 px-8" aria-label="Why knetc">
+      {/* ── VALUE PROPS ──────────────────────────────────────────────
+          3-column grid with vertical dividers on desktop.
+          Titles bump to text-3xl — these are section headlines.
+          Body text at text-lg (18px) — comfortable reading.
+      ──────────────────────────────────────────────────────────── */}
+      <section className="border-t border-white py-28 px-8" aria-label="Why knetc">
         <div className="grid grid-cols-1 lg:grid-cols-3">
           {FEATURES.map((f, i) => (
-            <ScrollReveal key={f.num} delay={i * 0.12}>
+            <ScrollReveal key={f.num} delay={i * 0.14}>
               <div
                 className={[
-                  "py-10 lg:py-0",
+                  "py-12 lg:py-0",
                   i > 0
-                    ? "border-t border-white lg:border-t-0 lg:border-l lg:pl-10"
+                    ? "border-t border-white lg:border-t-0 lg:border-l lg:pl-12"
                     : "",
-                  i < FEATURES.length - 1 ? "lg:pr-10" : "",
+                  i < FEATURES.length - 1 ? "lg:pr-12" : "",
                 ].join(" ")}
               >
                 <p
-                  className="text-xs mb-8"
+                  className="text-sm mb-10"
                   style={{ fontFamily: "var(--font-space-mono), monospace" }}
                 >
                   {f.num}
                 </p>
-                <h2 className="text-base font-bold uppercase tracking-widest mb-6 whitespace-pre-line leading-snug">
+                <h2 className="text-3xl sm:text-4xl font-bold uppercase tracking-tight mb-8 leading-tight whitespace-pre-line">
                   {f.title}
                 </h2>
                 <p
-                  className="text-sm leading-relaxed"
+                  className="text-lg leading-relaxed text-white/80"
                   style={{ fontFamily: "var(--font-space-mono), monospace" }}
                 >
                   {f.body}
@@ -311,12 +338,15 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── THE BOARDROOM ────────────────────────────────────────── */}
-      <section className="bg-white text-black px-8 py-24" aria-label="The Boardroom">
-        <div className="max-w-4xl">
+      {/* ── THE BOARDROOM ─────────────────────────────────────────────
+          Full white bg inversion — the scroll from black → white
+          is its own design beat. Nav auto-inverts via mix-blend-mode.
+      ──────────────────────────────────────────────────────────── */}
+      <section className="bg-white text-black px-8 py-28" aria-label="The Boardroom">
+        <div className="max-w-5xl">
           <ScrollReveal>
             <p
-              className="text-xs uppercase tracking-[0.3em] mb-14"
+              className="text-sm uppercase tracking-[0.3em] mb-16"
               style={{ fontFamily: "var(--font-space-mono), monospace" }}
             >
               The Boardroom
@@ -324,7 +354,7 @@ export default function Home() {
           </ScrollReveal>
 
           <ScrollReveal delay={0.1}>
-            <h2 className="text-[clamp(2.2rem,6vw,5.5rem)] font-bold uppercase tracking-tight leading-none mb-10">
+            <h2 className="text-[clamp(3rem,8vw,7.5rem)] font-bold uppercase tracking-tight leading-none mb-12">
               All Six.
               <br />
               One Brief.
@@ -333,34 +363,34 @@ export default function Home() {
 
           <ScrollReveal delay={0.2}>
             <p
-              className="text-sm leading-[2] max-w-md mb-14"
+              className="text-xl leading-relaxed max-w-lg mb-16"
               style={{ fontFamily: "var(--font-space-mono), monospace" }}
             >
               Ask one question and every agent responds. Alex synthesises their
-              answers into a single executive brief — and sends it to your inbox.
-              Your boardroom, on demand.
+              answers into a single executive brief — and delivers it to your
+              inbox. Your boardroom, on demand.
             </p>
           </ScrollReveal>
 
-          {/* Agent name cards — gap-px bg-black on white section */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-px bg-black border border-black mb-10">
+          {/* Agent name grid on white background */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-px bg-black border border-black mb-12">
             {AGENTS.map((agent, i) => (
               <motion.div
                 key={agent.name}
                 initial={{ opacity: 0 }}
                 whileInView={{ opacity: 1 }}
-                viewport={{ once: true, margin: "-60px" }}
-                transition={{ duration: 0.5, delay: 0.3 + i * 0.06, ease: EASE }}
-                className="bg-white px-5 py-4"
+                viewport={{ once: true, margin: "-40px" }}
+                transition={{ duration: 0.5, delay: 0.3 + i * 0.07, ease: EASE }}
+                className="bg-white px-6 py-5"
               >
                 <p
-                  className="text-xs font-bold uppercase tracking-widest"
+                  className="font-bold uppercase text-lg"
                   style={{ fontFamily: "var(--font-space-mono), monospace" }}
                 >
                   {agent.name}
                 </p>
                 <p
-                  className="text-xs text-black/50 mt-0.5"
+                  className="text-black/50 mt-1 text-base"
                   style={{ fontFamily: "var(--font-space-mono), monospace" }}
                 >
                   {agent.role}
@@ -371,9 +401,9 @@ export default function Home() {
 
           <ScrollReveal delay={0.5}>
             <div className="border-t border-black pt-8 flex items-center gap-5">
-              <div className="w-2 h-2 bg-black flex-shrink-0" />
+              <div className="w-2.5 h-2.5 bg-black flex-shrink-0" />
               <p
-                className="text-xs uppercase tracking-widest"
+                className="text-base uppercase tracking-widest"
                 style={{ fontFamily: "var(--font-space-mono), monospace" }}
               >
                 Synthesis delivered to your inbox in minutes
@@ -383,11 +413,15 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── PRICING ──────────────────────────────────────────────── */}
-      <section className="border-t border-white py-24 px-8" aria-label="Pricing">
+      {/* ── PRICING ───────────────────────────────────────────────────
+          gap-px bg-white border border-white grid.
+          Featured (Startup) card: bg-white text-black — inverted.
+          Price numbers are unmissable: clamp(3rem,5vw,4.5rem).
+      ──────────────────────────────────────────────────────────── */}
+      <section className="border-t border-white py-28 px-8" aria-label="Pricing">
         <ScrollReveal>
           <p
-            className="text-xs uppercase tracking-[0.3em] mb-14"
+            className="text-sm uppercase tracking-[0.3em] mb-16"
             style={{ fontFamily: "var(--font-space-mono), monospace" }}
           >
             Pricing
@@ -395,7 +429,7 @@ export default function Home() {
         </ScrollReveal>
 
         <ScrollReveal delay={0.08}>
-          <h2 className="text-[clamp(2rem,6vw,5rem)] font-bold uppercase tracking-tight leading-none mb-16">
+          <h2 className="text-[clamp(2.5rem,7vw,6rem)] font-bold uppercase tracking-tight leading-none mb-20">
             One Team.
             <br />
             Three Plans.
@@ -406,25 +440,26 @@ export default function Home() {
           {PLANS.map((plan, i) => (
             <motion.div
               key={plan.name}
-              initial={{ opacity: 0, y: 28 }}
+              initial={{ opacity: 0, y: 32 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-60px" }}
-              transition={{ duration: 0.75, delay: i * 0.1, ease: EASE }}
+              transition={{ duration: 0.8, delay: i * 0.1, ease: EASE }}
               className={[
-                "flex flex-col p-8 h-full",
+                "flex flex-col p-10 h-full",
                 plan.featured ? "bg-white text-black" : "bg-black text-white",
               ].join(" ")}
             >
-              <div className="flex items-start justify-between mb-6">
+              {/* Plan name + Most Popular badge */}
+              <div className="flex items-start justify-between mb-8">
                 <p
-                  className="text-xs font-bold uppercase tracking-widest"
+                  className="text-xl font-bold uppercase tracking-widest"
                   style={{ fontFamily: "var(--font-space-mono), monospace" }}
                 >
                   {plan.name}
                 </p>
                 {plan.featured && (
                   <span
-                    className="text-[10px] font-bold uppercase tracking-widest bg-black text-white px-2 py-1"
+                    className="text-xs font-bold uppercase tracking-widest bg-black text-white px-3 py-1.5 flex-shrink-0 ml-3"
                     style={{ fontFamily: "var(--font-space-mono), monospace" }}
                   >
                     Most Popular
@@ -432,11 +467,12 @@ export default function Home() {
                 )}
               </div>
 
-              <div className="mb-4 flex items-baseline gap-1.5">
+              {/* Price — unmissable */}
+              <div className="mb-6 flex items-baseline gap-2">
                 <span
                   className="font-bold leading-none"
                   style={{
-                    fontSize: "clamp(2.5rem, 5vw, 4rem)",
+                    fontSize: "clamp(3rem, 5vw, 4.5rem)",
                     fontFamily: "var(--font-space-grotesk), sans-serif",
                   }}
                 >
@@ -444,7 +480,7 @@ export default function Home() {
                 </span>
                 <span
                   className={[
-                    "text-xs",
+                    "text-base",
                     plan.featured ? "text-black/50" : "text-white/50",
                   ].join(" ")}
                   style={{ fontFamily: "var(--font-space-mono), monospace" }}
@@ -453,29 +489,31 @@ export default function Home() {
                 </span>
               </div>
 
+              {/* Tagline */}
               <p
                 className={[
-                  "text-xs leading-relaxed mb-8",
-                  plan.featured ? "text-black/60" : "text-white/50",
+                  "text-base leading-relaxed mb-10",
+                  plan.featured ? "text-black/60" : "text-white/60",
                 ].join(" ")}
                 style={{ fontFamily: "var(--font-space-mono), monospace" }}
               >
                 {plan.tagline}
               </p>
 
-              <ul className="space-y-3 mb-10 flex-1">
+              {/* Feature list */}
+              <ul className="space-y-4 mb-12 flex-1">
                 {plan.features.map((feat) => (
-                  <li key={feat} className="flex items-start gap-3">
+                  <li key={feat} className="flex items-start gap-4">
                     <div
                       className={[
-                        "w-1.5 h-1.5 mt-1.5 flex-shrink-0",
+                        "w-2 h-2 mt-2 flex-shrink-0",
                         plan.featured ? "bg-black" : "bg-white",
                       ].join(" ")}
                     />
                     <span
                       className={[
-                        "text-xs leading-relaxed",
-                        plan.featured ? "text-black/80" : "text-white/70",
+                        "text-base leading-relaxed",
+                        plan.featured ? "text-black/80" : "text-white/80",
                       ].join(" ")}
                       style={{ fontFamily: "var(--font-space-mono), monospace" }}
                     >
@@ -485,11 +523,12 @@ export default function Home() {
                 ))}
               </ul>
 
+              {/* CTA */}
               <Link
                 href="/signup"
                 aria-label={`Sign up for the ${plan.name} plan`}
                 className={[
-                  "block text-center py-3.5 text-xs font-bold uppercase tracking-widest border transition-colors duration-200",
+                  "block text-center py-4 text-sm font-bold uppercase tracking-widest border transition-colors duration-200",
                   plan.featured
                     ? "bg-black text-white border-black hover:bg-white hover:text-black"
                     : "bg-white text-black border-white hover:bg-black hover:text-white",
@@ -503,18 +542,20 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── CTA ──────────────────────────────────────────────────── */}
-      <section className="py-40 px-8 text-center" aria-label="Call to action">
+      {/* ── CTA ───────────────────────────────────────────────────────
+          Maximum scale. The headline and button command attention.
+      ──────────────────────────────────────────────────────────── */}
+      <section className="py-44 px-8 text-center" aria-label="Call to action">
         <ScrollReveal>
           <p
-            className="text-xs uppercase tracking-[0.3em] mb-10"
+            className="text-sm uppercase tracking-[0.3em] mb-12"
             style={{ fontFamily: "var(--font-space-mono), monospace" }}
           >
             Ready?
           </p>
         </ScrollReveal>
         <ScrollReveal delay={0.1}>
-          <h2 className="text-[clamp(2.5rem,9vw,8rem)] font-bold uppercase tracking-tight leading-none mb-16">
+          <h2 className="text-[clamp(3rem,10vw,9rem)] font-bold uppercase tracking-tight leading-none mb-20">
             Meet Your
             <br />
             Team.
@@ -524,15 +565,18 @@ export default function Home() {
           <Link
             href="/signup"
             aria-label="Sign up for knetc for free"
-            className="inline-flex items-center gap-4 bg-white text-black px-14 py-6 text-sm font-bold uppercase tracking-widest hover:bg-black hover:text-white border border-white transition-colors duration-300"
+            className="group inline-flex items-center gap-5 bg-white text-black px-14 py-7 text-base font-bold uppercase tracking-widest hover:bg-black hover:text-white border border-white transition-colors duration-300"
             style={{ fontFamily: "var(--font-space-mono), monospace" }}
           >
             Sign Up Free
+            <span className="inline-block group-hover:translate-x-2 transition-transform duration-300">
+              →
+            </span>
           </Link>
         </ScrollReveal>
         <ScrollReveal delay={0.34}>
           <p
-            className="text-xs uppercase tracking-widest mt-10 opacity-60"
+            className="text-sm uppercase tracking-widest mt-12 opacity-50"
             style={{ fontFamily: "var(--font-space-mono), monospace" }}
           >
             No credit card required · Start in seconds
@@ -541,15 +585,15 @@ export default function Home() {
       </section>
 
       {/* ── FOOTER ───────────────────────────────────────────────── */}
-      <footer className="border-t border-white px-8 py-8 flex items-center justify-between">
+      <footer className="border-t border-white px-8 py-10 flex items-center justify-between">
         <span
-          className="text-xs font-bold tracking-[0.25em] uppercase"
+          className="text-sm font-bold tracking-[0.25em] uppercase"
           style={{ fontFamily: "var(--font-space-mono), monospace" }}
         >
           KNETC
         </span>
         <span
-          className="text-xs opacity-40"
+          className="text-sm opacity-40"
           style={{ fontFamily: "var(--font-space-mono), monospace" }}
         >
           © {new Date().getFullYear()} knetc
