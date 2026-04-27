@@ -100,8 +100,9 @@ export default function PricingPage() {
         setError("No checkout URL returned. Please try again.");
         setLoading(null);
       }
-    } catch {
-      setError("Network error. Please check your connection and try again.");
+    } catch (err) {
+      console.error("Stripe checkout error:", err);
+      setError(err instanceof Error ? err.message : String(err));
       setLoading(null);
     }
   }
