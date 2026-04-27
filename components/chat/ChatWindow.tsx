@@ -35,6 +35,7 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
     tier: string;
   } | null>(null);
   const isNewConvoRef = useRef(false);
+  const autostartRef = useRef(false);
 
   const agent = agentKey !== "boardroom" ? AGENTS.find((a) => a.key === agentKey) : null;
   const isBoardroom = agentKey === "boardroom";
@@ -57,7 +58,23 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
       .select("*")
       .eq("conversation_id", cid)
       .order("created_at", { ascending: true });
-    if (data && searchParams.get("cid") === cid) setMessages(data as Message[]);
+    if (!data || searchParams.get("cid") !== cid) return;
+    setMessages(data as Message[]);
+
+    const autostart = searchParams.get("autostart") === "1";
+    if (!autostart || autostartRef.current || isBoardroom) return;
+    const msgs = data as Message[];
+    const userMsgs = msgs.filter((m) => m.role === "user");
+    const asstMsgs = msgs.filter((m) => m.role === "assistant");
+    if (userMsgs.length === 0 || asstMsgs.length > 0) return;
+    autostartRef.current = true;
+    const lastMsg = userMsgs[userMsgs.length - 1];
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    isNewConvoRef.current = true;
+    setIsLoading(true);
+    await handleAgentMessage(lastMsg.content, cid, user.id);
+    setIsLoading(false);
   }
 
   useEffect(() => {

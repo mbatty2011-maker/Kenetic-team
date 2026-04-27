@@ -32,7 +32,7 @@ export default function LoginPage() {
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-apple-xl bg-apple-gray-950 mb-4 shadow-apple-md">
-            <span className="text-white font-semibold text-xl tracking-tight">L</span>
+            <span className="text-white font-semibold text-xl tracking-tight">K</span>
           </div>
           <h1 className="text-2xl font-semibold text-apple-gray-950 tracking-tight">knetc</h1>
         </div>

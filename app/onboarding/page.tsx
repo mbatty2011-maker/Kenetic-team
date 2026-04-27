@@ -25,16 +25,11 @@ export default async function OnboardingPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("company_name, full_name")
+    .select("company_name, onboarding_complete")
     .eq("id", user.id)
     .single();
 
-  if (profile?.company_name) redirect("/chat");
+  if (profile?.company_name || profile?.onboarding_complete) redirect("/chat");
 
-  const userName: string =
-    profile?.full_name ??
-    (user.user_metadata?.full_name as string | undefined) ??
-    "";
-
-  return <OnboardingClient userName={userName} />;
+  return <OnboardingClient />;
 }

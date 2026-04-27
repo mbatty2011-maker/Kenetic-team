@@ -126,8 +126,31 @@ export async function POST(req: NextRequest) {
     ? `[System: This user's plan limits conversation memory to the past ${memoryCutoffDays} days. Older messages have been excluded from context.]`
     : "";
 
+  // First-message onboarding instruction for Alex
+  let firstMessageInstruction = "";
+  if (agentKey === "alex") {
+    const { count } = await supabase
+      .from("messages")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("role", "assistant");
+    if ((count ?? 1) === 0) {
+      firstMessageInstruction = `---
+This is the user's very first interaction with their AI executive team. They typed this as part of onboarding.
+
+Do NOT give advice yet or answer their question directly. Instead:
+1. Reflect back what you heard — show you understood the real challenge beneath their words.
+2. Name the core tension or risk you see in their situation.
+3. Ask ONE focused question to find out where they are most stuck right now.
+
+Keep it to 3–4 sentences. Warm, sharp, no fluff. No lists or headers — just a short paragraph.
+---`;
+    }
+  }
+
   const systemPrompt = [
     SYSTEM_PROMPTS[agentKey],
+    firstMessageInstruction,
     knowledgeBase ? `---\n## Knowledge Base (live)\n${knowledgeBase}\n---` : "",
     userSection,
     memoryNote,
