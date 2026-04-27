@@ -5,9 +5,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
-// Webhook requires the raw body — disable Next.js body parsing.
-export const config = { api: { bodyParser: false } };
-
 async function upsertSubscription(
   supabase: ReturnType<typeof createAdminClient>,
   subscription: Stripe.Subscription,
