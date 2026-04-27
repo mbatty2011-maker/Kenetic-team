@@ -1,175 +1,333 @@
-import Image from "next/image";
+"use client";
+
 import Link from "next/link";
+import { motion } from "framer-motion";
+
+// Cubic bezier that feels snappy but organic — used everywhere
+const EASE = [0.16, 1, 0.3, 1] as const;
 
 const agents = [
-  { name: "Alex", role: "Chief of Staff", description: "Orchestrates your team and synthesizes insights across every department." },
-  { name: "Jeremy", role: "CFO", description: "Financial modeling, unit economics, and capital allocation strategy." },
-  { name: "Kai", role: "CTO", description: "Technical architecture, engineering decisions, and product roadmap." },
-  { name: "Dana", role: "Head of Sales", description: "Go-to-market, pipeline strategy, and partnership development." },
-  { name: "Marcus", role: "General Counsel", description: "Legal structure, compliance, contracts, and risk management." },
+  { name: "ALEX", role: "Chief of Staff" },
+  { name: "JEREMY", role: "CFO" },
+  { name: "KAI", role: "CTO" },
+  { name: "DANA", role: "Head of Sales" },
+  { name: "MARCUS", role: "General Counsel" },
 ];
+
+const features = [
+  {
+    num: "01",
+    title: "ALWAYS\nAVAILABLE",
+    body: "No scheduling. No delays. Ask a question and get a considered expert answer in seconds.",
+  },
+  {
+    num: "02",
+    title: "FULL CONTEXT\nMEMORY",
+    body: "Every decision, every conversation — remembered forever. Never repeat yourself again.",
+  },
+  {
+    num: "03",
+    title: "BUILT FOR\nFOUNDERS",
+    body: "From pre-seed to scale, your team adapts to the problems that matter most at your stage.",
+  },
+];
+
+// Theatrical text reveal: parent clips, child rises from below the mask
+function HeroLine({
+  children,
+  delay,
+}: {
+  children: React.ReactNode;
+  delay: number;
+}) {
+  return (
+    <div className="overflow-hidden leading-none">
+      <motion.div
+        initial={{ y: "110%" }}
+        animate={{ y: "0%" }}
+        transition={{ duration: 0.95, delay, ease: EASE }}
+      >
+        {children}
+      </motion.div>
+    </div>
+  );
+}
+
+// Fade + lift reveal triggered when the element enters the viewport
+function ScrollReveal({
+  children,
+  delay = 0,
+}: {
+  children: React.ReactNode;
+  delay?: number;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 28 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-60px" }}
+      transition={{ duration: 0.75, delay, ease: EASE }}
+    >
+      {children}
+    </motion.div>
+  );
+}
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-white text-[#1C1C1E] font-sans">
-      {/* Nav */}
-      <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-8 py-5 bg-white/90 backdrop-blur-md border-b border-black/5">
-        <Image src="/knetc-logo.png" alt="knetc team" width={120} height={32} className="h-8 w-auto" />
-        <div className="flex items-center gap-3">
-          <Link href="/login" className="text-sm text-[#1C1C1E]/60 hover:text-[#1C1C1E] transition-colors px-4 py-2">
-            Sign in
-          </Link>
-          <Link href="/signup" className="text-sm bg-[#1C1C1E] text-white px-5 py-2.5 rounded-full hover:bg-black transition-colors font-medium">
-            Get started
-          </Link>
-        </div>
-      </nav>
+    <div
+      className="bg-black text-white selection:bg-white selection:text-black"
+      style={{ fontFamily: "var(--font-space-grotesk), system-ui, sans-serif" }}
+    >
+      {/* ── NAV ──────────────────────────────────────────────────
+          mix-blend-mode: difference makes this nav automatically
+          invert: white on black sections, black on the white team
+          section — zero manual colour switching needed.
+      ─────────────────────────────────────────────────────────── */}
+      <motion.nav
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.5, delay: 0.1 }}
+        className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-8 py-6"
+        style={{ mixBlendMode: "difference" }}
+      >
+        <span
+          className="text-white text-sm font-bold tracking-[0.25em] uppercase"
+          style={{ fontFamily: "var(--font-space-mono), monospace" }}
+        >
+          KNETC
+        </span>
+        <Link
+          href="/signup"
+          aria-label="Sign up for knetc for free"
+          className="text-white border border-white text-xs font-bold uppercase tracking-widest px-5 py-2.5 hover:bg-white hover:text-black transition-colors duration-200"
+          style={{ fontFamily: "var(--font-space-mono), monospace" }}
+        >
+          Sign Up Free
+        </Link>
+      </motion.nav>
 
-      {/* Hero */}
-      <section className="pt-40 pb-28 px-6 text-center max-w-4xl mx-auto">
-        <div className="inline-flex items-center gap-2 bg-[#1C1C1E]/5 border border-black/8 rounded-full px-4 py-1.5 text-xs font-medium text-[#1C1C1E]/60 mb-8 tracking-wide uppercase">
-          AI-Powered Virtual Team
+      {/* ── HERO ─────────────────────────────────────────────────
+          Full viewport. Massive headline reveals word by word.
+          Horizontal rule animates scaleX from left after the
+          headline lands. CTA + subtext appear last.
+      ─────────────────────────────────────────────────────────── */}
+      <section
+        className="min-h-screen flex flex-col justify-between px-8 pt-32 pb-12"
+        aria-label="Hero"
+      >
+        {/* Label */}
+        <div className="overflow-hidden">
+          <motion.p
+            initial={{ y: "100%" }}
+            animate={{ y: "0%" }}
+            transition={{ duration: 0.7, delay: 0.2, ease: EASE }}
+            className="text-xs uppercase tracking-[0.3em]"
+            style={{ fontFamily: "var(--font-space-mono), monospace" }}
+          >
+            AI Executive Team · Always On
+          </motion.p>
         </div>
-        <h1 className="text-6xl sm:text-7xl font-bold tracking-tight leading-[1.05] mb-6">
-          Your executive team,<br />
-          <span className="relative inline-block">
-            always on.
-            <span className="absolute -bottom-1 left-0 right-0 h-[3px] bg-[#1C1C1E] rounded-full" />
-          </span>
-        </h1>
-        <p className="text-xl text-[#1C1C1E]/50 max-w-2xl mx-auto mb-10 leading-relaxed">
-          knetc gives founders and operators a full AI leadership team — CFO, CTO, Head of Sales, and General Counsel — available instantly, around the clock.
-        </p>
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          <Link href="/signup" className="w-full sm:w-auto bg-[#1C1C1E] text-white px-8 py-4 rounded-full text-base font-semibold hover:bg-black transition-colors">
-            Start for free
-          </Link>
-          <Link href="/login" className="w-full sm:w-auto border border-black/15 text-[#1C1C1E] px-8 py-4 rounded-full text-base font-semibold hover:border-black/30 transition-colors">
-            Sign in
-          </Link>
-        </div>
-      </section>
 
-      {/* Agents grid */}
-      <section className="py-24 px-6 bg-[#F9F9F9] border-y border-black/5">
-        <div className="max-w-5xl mx-auto">
-          <p className="text-center text-xs font-semibold uppercase tracking-widest text-[#1C1C1E]/40 mb-12">Your team</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {agents.map((agent) => (
-              <div key={agent.name} className="bg-white border border-black/6 rounded-2xl p-6 hover:border-black/15 transition-colors">
-                <div className="w-10 h-10 rounded-full bg-[#1C1C1E] flex items-center justify-center mb-4">
-                  <span className="text-white text-sm font-bold">{agent.name[0]}</span>
-                </div>
-                <div className="text-xs font-semibold uppercase tracking-widest text-[#1C1C1E]/40 mb-1">{agent.role}</div>
-                <div className="font-semibold text-[#1C1C1E] mb-2">{agent.name}</div>
-                <p className="text-sm text-[#1C1C1E]/50 leading-relaxed">{agent.description}</p>
-              </div>
-            ))}
-            {/* Boardroom card */}
-            <div className="bg-[#1C1C1E] border border-black/6 rounded-2xl p-6 sm:col-span-2 lg:col-span-1">
-              <div className="flex gap-1.5 mb-4">
-                {["A","J","K","D","M"].map((l) => (
-                  <div key={l} className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center">
-                    <span className="text-white text-xs font-bold">{l}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="text-xs font-semibold uppercase tracking-widest text-white/40 mb-1">All agents</div>
-              <div className="font-semibold text-white mb-2">The Boardroom</div>
-              <p className="text-sm text-white/50 leading-relaxed">Bring the whole team together for complex decisions that span every function.</p>
-            </div>
+        {/* Headline */}
+        <div>
+          <HeroLine delay={0.4}>
+            <h1 className="text-[clamp(3rem,9.5vw,9rem)] font-bold tracking-tight uppercase pb-1">
+              Your
+            </h1>
+          </HeroLine>
+          <HeroLine delay={0.58}>
+            <h1 className="text-[clamp(3rem,9.5vw,9rem)] font-bold tracking-tight uppercase pb-1">
+              Executive
+            </h1>
+          </HeroLine>
+          <HeroLine delay={0.76}>
+            <h1 className="text-[clamp(3rem,9.5vw,9rem)] font-bold tracking-tight uppercase">
+              Team.
+            </h1>
+          </HeroLine>
+        </div>
+
+        {/* Rule + bottom row */}
+        <div>
+          <motion.div
+            initial={{ scaleX: 0 }}
+            animate={{ scaleX: 1 }}
+            transition={{ duration: 1.1, delay: 1.0, ease: EASE }}
+            className="h-px bg-white origin-left mb-8"
+          />
+          <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-8">
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.7, delay: 1.15 }}
+              className="text-sm leading-[1.8] max-w-xs"
+              style={{ fontFamily: "var(--font-space-mono), monospace" }}
+            >
+              CFO · CTO · Head of Sales
+              <br />
+              General Counsel · Chief of Staff
+              <br />
+              Available instantly, 24/7.
+            </motion.p>
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, delay: 1.3, ease: EASE }}
+            >
+              <Link
+                href="/signup"
+                aria-label="Sign up for knetc for free"
+                className="group inline-flex items-center gap-3 bg-white text-black px-8 py-4 text-sm font-bold uppercase tracking-widest hover:bg-black hover:text-white border border-white transition-colors duration-300"
+                style={{ fontFamily: "var(--font-space-mono), monospace" }}
+              >
+                Sign Up Free
+                <span className="inline-block group-hover:translate-x-1.5 transition-transform duration-300">
+                  →
+                </span>
+              </Link>
+            </motion.div>
           </div>
         </div>
       </section>
 
-      {/* Feature strip */}
-      <section className="py-24 px-6">
-        <div className="max-w-5xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-12">
-          {[
-            { label: "Always available", body: "No scheduling, no delays. Ask a question and get a considered expert answer in seconds." },
-            { label: "Full context memory", body: "Your team remembers every conversation, decision, and document — so you never repeat yourself." },
-            { label: "Built for founders", body: "From pre-seed to scale, knetc adapts to the problems that matter most at your stage." },
-          ].map((f) => (
-            <div key={f.label}>
-              <div className="w-8 h-8 rounded-full border-2 border-[#1C1C1E] mb-5" />
-              <h3 className="font-semibold text-lg mb-2">{f.label}</h3>
-              <p className="text-[#1C1C1E]/50 text-sm leading-relaxed">{f.body}</p>
-            </div>
+      {/* ── VALUE PROPS ──────────────────────────────────────────
+          3-column grid. Vertical dividers on desktop,
+          horizontal dividers on mobile. Numbered in mono.
+          Each column staggers in as it enters view.
+      ─────────────────────────────────────────────────────────── */}
+      <section
+        className="border-t border-white py-24 px-8"
+        aria-label="Why knetc"
+      >
+        <div className="grid grid-cols-1 lg:grid-cols-3">
+          {features.map((f, i) => (
+            <ScrollReveal key={f.num} delay={i * 0.12}>
+              <div
+                className={[
+                  "py-10 lg:py-0",
+                  i > 0
+                    ? "border-t border-white lg:border-t-0 lg:border-l lg:pl-10"
+                    : "",
+                  i < features.length - 1 ? "lg:pr-10" : "",
+                ].join(" ")}
+              >
+                <p
+                  className="text-xs mb-8"
+                  style={{ fontFamily: "var(--font-space-mono), monospace" }}
+                >
+                  {f.num}
+                </p>
+                <h2 className="text-base font-bold uppercase tracking-widest mb-6 whitespace-pre-line leading-snug">
+                  {f.title}
+                </h2>
+                <p
+                  className="text-sm leading-relaxed"
+                  style={{ fontFamily: "var(--font-space-mono), monospace" }}
+                >
+                  {f.body}
+                </p>
+              </div>
+            </ScrollReveal>
           ))}
         </div>
       </section>
 
-      {/* Pricing */}
-      <section className="py-24 px-6 bg-[#F9F9F9] border-y border-black/5">
-        <div className="max-w-4xl mx-auto">
-          <p className="text-center text-xs font-semibold uppercase tracking-widest text-[#1C1C1E]/40 mb-3">Pricing</p>
-          <h2 className="text-3xl sm:text-4xl font-bold text-center tracking-tight mb-12">Simple, honest pricing</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-2xl mx-auto">
-            {/* Free */}
-            <div className="bg-white border border-black/8 rounded-2xl p-8">
-              <div className="text-xs font-semibold uppercase tracking-widest text-[#1C1C1E]/40 mb-2">Free</div>
-              <div className="text-4xl font-bold tracking-tight mb-1">$0</div>
-              <p className="text-sm text-[#1C1C1E]/50 mb-6">Forever. No card required.</p>
-              <ul className="space-y-3 mb-8 text-sm text-[#1C1C1E]/70">
-                {[
-                  "All 5 AI executives",
-                  "The Boardroom",
-                  "Google Docs & Sheets",
-                  "Gmail drafts",
-                  "Web search",
-                  "100 messages / day",
-                ].map((f) => (
-                  <li key={f} className="flex items-center gap-2">
-                    <span className="text-[#1C1C1E] font-bold text-xs">✓</span> {f}
-                  </li>
-                ))}
-              </ul>
-              <Link href="/signup" className="block text-center bg-[#1C1C1E] text-white text-sm font-semibold py-3 rounded-full hover:bg-black transition-colors">
-                Get started free
-              </Link>
-            </div>
-            {/* Pro */}
-            <div className="bg-[#1C1C1E] border border-black/8 rounded-2xl p-8 relative overflow-hidden">
-              <div className="absolute top-4 right-4 bg-white/10 text-white text-xs font-semibold px-2.5 py-1 rounded-full">Coming soon</div>
-              <div className="text-xs font-semibold uppercase tracking-widest text-white/40 mb-2">Pro</div>
-              <div className="text-4xl font-bold tracking-tight text-white mb-1">$49<span className="text-2xl text-white/50">/mo</span></div>
-              <p className="text-sm text-white/50 mb-6">For teams moving fast.</p>
-              <ul className="space-y-3 mb-8 text-sm text-white/70">
-                {[
-                  "Everything in Free",
-                  "Unlimited messages",
-                  "Autonomous task runner",
-                  "Computer Use (live browser)",
-                  "SSH / server access for Kai",
-                  "Priority support",
-                ].map((f) => (
-                  <li key={f} className="flex items-center gap-2">
-                    <span className="text-white font-bold text-xs">✓</span> {f}
-                  </li>
-                ))}
-              </ul>
-              <button disabled className="w-full text-center bg-white/10 text-white/40 text-sm font-semibold py-3 rounded-full cursor-not-allowed">
-                Notify me
-              </button>
-            </div>
-          </div>
+      {/* ── TEAM ─────────────────────────────────────────────────
+          Full colour inversion — white background, black text.
+          The scroll from black → white is itself a design beat.
+          Names are enormous; roles are monospaced, minimal.
+      ─────────────────────────────────────────────────────────── */}
+      <section className="bg-white text-black px-8 py-24" aria-label="The team">
+        <ScrollReveal>
+          <p
+            className="text-xs uppercase tracking-[0.3em] mb-14"
+            style={{ fontFamily: "var(--font-space-mono), monospace" }}
+          >
+            Your Team
+          </p>
+        </ScrollReveal>
+        <div role="list">
+          {agents.map((agent, i) => (
+            <ScrollReveal key={agent.name} delay={i * 0.07}>
+              <div
+                role="listitem"
+                className="flex items-center justify-between py-5 border-t border-black last:border-b"
+              >
+                <span className="text-[clamp(1.8rem,5.5vw,4.5rem)] font-bold uppercase tracking-tight leading-none">
+                  {agent.name}
+                </span>
+                <span
+                  className="text-xs uppercase tracking-widest"
+                  style={{ fontFamily: "var(--font-space-mono), monospace" }}
+                >
+                  {agent.role}
+                </span>
+              </div>
+            </ScrollReveal>
+          ))}
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="py-28 px-6 bg-[#1C1C1E] text-white text-center">
-        <Image src="/knetc-logo.png" alt="knetc team" width={100} height={28} className="h-7 w-auto mx-auto mb-10 invert" />
-        <h2 className="text-4xl sm:text-5xl font-bold tracking-tight mb-5">Ready to meet your team?</h2>
-        <p className="text-white/50 mb-10 text-lg max-w-xl mx-auto">Sign up in seconds. No credit card required.</p>
-        <Link href="/signup" className="inline-block bg-white text-[#1C1C1E] px-10 py-4 rounded-full text-base font-semibold hover:bg-white/90 transition-colors">
-          Get started free
-        </Link>
+      {/* ── CTA ──────────────────────────────────────────────────
+          Back to black. Centred, maximal. The headline and
+          button land with staggered scroll reveals so the
+          section builds as the user arrives at it.
+          Button inverts on hover — the defining interaction.
+      ─────────────────────────────────────────────────────────── */}
+      <section
+        className="py-40 px-8 text-center"
+        aria-label="Call to action"
+      >
+        <ScrollReveal>
+          <p
+            className="text-xs uppercase tracking-[0.3em] mb-10"
+            style={{ fontFamily: "var(--font-space-mono), monospace" }}
+          >
+            Ready?
+          </p>
+        </ScrollReveal>
+        <ScrollReveal delay={0.1}>
+          <h2 className="text-[clamp(2.5rem,9vw,8rem)] font-bold uppercase tracking-tight leading-none mb-16">
+            Meet Your
+            <br />
+            Team.
+          </h2>
+        </ScrollReveal>
+        <ScrollReveal delay={0.22}>
+          <Link
+            href="/signup"
+            aria-label="Sign up for knetc for free"
+            className="inline-flex items-center gap-4 bg-white text-black px-14 py-6 text-sm font-bold uppercase tracking-widest hover:bg-black hover:text-white border border-white transition-colors duration-300"
+            style={{ fontFamily: "var(--font-space-mono), monospace" }}
+          >
+            Sign Up Free
+          </Link>
+        </ScrollReveal>
+        <ScrollReveal delay={0.34}>
+          <p
+            className="text-xs uppercase tracking-widest mt-10 opacity-60"
+            style={{ fontFamily: "var(--font-space-mono), monospace" }}
+          >
+            No credit card required · Start in seconds
+          </p>
+        </ScrollReveal>
       </section>
 
-      {/* Footer */}
-      <footer className="py-8 px-8 border-t border-black/5 flex items-center justify-between text-xs text-[#1C1C1E]/35">
-        <Image src="/knetc-logo.png" alt="knetc team" width={80} height={22} className="h-5 w-auto opacity-40" />
-        <span>© {new Date().getFullYear()} knetc. All rights reserved.</span>
+      {/* ── FOOTER ───────────────────────────────────────────── */}
+      <footer className="border-t border-white px-8 py-8 flex items-center justify-between">
+        <span
+          className="text-xs font-bold tracking-[0.25em] uppercase"
+          style={{ fontFamily: "var(--font-space-mono), monospace" }}
+        >
+          KNETC
+        </span>
+        <span
+          className="text-xs opacity-40"
+          style={{ fontFamily: "var(--font-space-mono), monospace" }}
+        >
+          © {new Date().getFullYear()} knetc
+        </span>
       </footer>
     </div>
   );
