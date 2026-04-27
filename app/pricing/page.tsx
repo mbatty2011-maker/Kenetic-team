@@ -86,10 +86,15 @@ export default function PricingPage() {
         return;
       }
 
-      const data = await res.json();
+      let data: { url?: string; error?: string } = {};
+      try {
+        data = await res.json();
+      } catch {
+        // non-JSON body (e.g. middleware redirect returned HTML)
+      }
 
       if (!res.ok) {
-        setError(data.error ?? "Something went wrong. Please try again.");
+        setError(data.error ?? `Request failed (${res.status}). Please try again.`);
         setLoading(null);
         return;
       }
