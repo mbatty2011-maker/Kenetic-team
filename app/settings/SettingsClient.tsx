@@ -102,69 +102,73 @@ export default function SettingsPage() {
     setTimeout(() => setToast(""), 2500);
   }
 
+  const monoStyle = { fontFamily: "var(--font-space-mono), monospace" };
+
+  const labelClass = "block text-white/50 text-xs uppercase tracking-widest mb-1.5";
+  const inputClass = "w-full bg-transparent text-white text-sm focus:outline-none border-b border-white/20 focus:border-white pb-1.5 transition-colors";
+  const saveBtn = "px-4 py-2 bg-white text-black text-xs font-bold uppercase tracking-widest hover:bg-black hover:text-white border border-white transition-colors duration-200 disabled:opacity-40";
+
   return (
-    <div className="min-h-screen bg-apple-gray-50">
+    <div className="min-h-screen bg-black text-white">
       {/* Header */}
-      <div className="glass border-b border-apple-gray-100 sticky top-0 z-10">
+      <div className="border-b border-white sticky top-0 z-10 bg-black">
         <div className="max-w-xl mx-auto px-4 py-4 flex items-center gap-3">
           <Link
             href="/chat"
-            className="p-2 rounded-apple-md hover:bg-apple-gray-100 transition-colors text-apple-gray-500 hover:text-apple-gray-950"
+            className="p-2 border border-white text-white hover:bg-white hover:text-black transition-colors duration-200"
           >
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
               <path d="M11 4L6 9L11 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </Link>
-          <h1 className="text-lg font-semibold text-apple-gray-950">Settings</h1>
+          <h1 className="text-white text-xs font-bold uppercase tracking-widest" style={monoStyle}>
+            Settings
+          </h1>
         </div>
       </div>
 
-      <div className="max-w-xl mx-auto px-4 py-6 space-y-6">
+      <div className="max-w-xl mx-auto px-4 py-6 space-y-8">
 
         {/* Profile */}
         <section>
-          <h2 className="text-xs font-semibold text-apple-gray-500 uppercase tracking-wider px-1 mb-2">
+          <h2 className="text-white/40 text-xs font-bold uppercase tracking-widest px-1 mb-3" style={monoStyle}>
             Profile
           </h2>
-          <div className="bg-white rounded-apple-xl shadow-apple-sm overflow-hidden">
-            <div className="divide-y divide-apple-gray-100">
+          <div className="border border-white">
+            <div className="divide-y divide-white/10">
               <div className="px-4 py-3">
-                <label className="block text-xs text-apple-gray-500 mb-1">Full name</label>
+                <label className={labelClass} style={monoStyle}>Full name</label>
                 <input
                   type="text"
                   value={profile.full_name}
                   onChange={(e) => setProfile({ ...profile, full_name: e.target.value })}
-                  className="w-full text-sm text-apple-gray-950 bg-transparent focus:outline-none"
+                  className={inputClass}
                   placeholder="Your name"
                 />
               </div>
               <div className="px-4 py-3">
-                <label className="block text-xs text-apple-gray-500 mb-1">Company</label>
+                <label className={labelClass} style={monoStyle}>Company</label>
                 <input
                   type="text"
                   value={profile.company_name}
                   onChange={(e) => setProfile({ ...profile, company_name: e.target.value })}
-                  className="w-full text-sm text-apple-gray-950 bg-transparent focus:outline-none"
+                  className={inputClass}
                   placeholder="Your company"
                 />
               </div>
               <div className="px-4 py-3">
-                <label className="block text-xs text-apple-gray-500 mb-1">Role</label>
+                <label className={labelClass} style={monoStyle}>Role</label>
                 <input
                   type="text"
                   value={profile.role_title}
                   onChange={(e) => setProfile({ ...profile, role_title: e.target.value })}
-                  className="w-full text-sm text-apple-gray-950 bg-transparent focus:outline-none"
+                  className={inputClass}
                   placeholder="Your role"
                 />
               </div>
             </div>
-            <div className="px-4 py-3 border-t border-apple-gray-100">
-              <button
-                onClick={saveProfile}
-                disabled={saving}
-                className="px-4 py-2 bg-apple-gray-950 text-white text-sm font-medium rounded-apple-md hover:bg-apple-gray-800 disabled:opacity-50 transition-all"
-              >
+            <div className="px-4 py-3 border-t border-white/10">
+              <button onClick={saveProfile} disabled={saving} className={saveBtn} style={monoStyle}>
                 {saved ? "Saved ✓" : saving ? "Saving..." : "Save"}
               </button>
             </div>
@@ -173,33 +177,29 @@ export default function SettingsPage() {
 
         {/* Agent Memory */}
         <section>
-          <h2 className="text-xs font-semibold text-apple-gray-500 uppercase tracking-wider px-1 mb-1">
+          <h2 className="text-white/40 text-xs font-bold uppercase tracking-widest px-1 mb-1" style={monoStyle}>
             Agent Memory
           </h2>
-          <p className="text-xs text-apple-gray-400 px-1 mb-2">
-            Everything here is injected into every agent&apos;s context on every message. Use it to describe your company, product, goals, strategy — anything the agents should always know.
+          <p className="text-white/30 text-xs px-1 mb-3" style={monoStyle}>
+            Everything here is injected into every agent&apos;s context. Describe your company, product, goals, strategy — anything they should always know.
           </p>
-          <div className="bg-white rounded-apple-xl shadow-apple-sm overflow-hidden">
+          <div className="border border-white">
             <div className="px-4 py-3">
               <textarea
                 value={profile.user_context}
                 onChange={(e) => setProfile({ ...profile, user_context: e.target.value })}
                 placeholder={`Example:\n## About My Company\nWe're building X, a Y for Z. Currently in [stage].\n\n## My Goals\n- Ship v1 by [date]\n- Land first paying customer\n\n## Key People\n- [Name]: [role]\n\n## Context Agents Should Know\n[Anything else relevant]`}
                 rows={12}
-                className="w-full text-sm text-apple-gray-700 bg-transparent focus:outline-none resize-none leading-relaxed placeholder:text-apple-gray-300"
+                className="w-full bg-transparent text-white text-sm focus:outline-none resize-none leading-relaxed placeholder:text-white/20"
               />
             </div>
-            <div className="px-4 py-3 border-t border-apple-gray-100 flex items-center justify-between">
-              <span className="text-xs text-apple-gray-400">
+            <div className="px-4 py-3 border-t border-white/10 flex items-center justify-between">
+              <span className="text-white/30 text-xs" style={monoStyle}>
                 {profile.user_context.length > 0
                   ? `${profile.user_context.length.toLocaleString()} chars`
-                  : "Empty — agents will use their default context"}
+                  : "Empty"}
               </span>
-              <button
-                onClick={saveProfile}
-                disabled={saving}
-                className="px-4 py-2 bg-apple-gray-950 text-white text-sm font-medium rounded-apple-md hover:bg-apple-gray-800 disabled:opacity-50 transition-all"
-              >
+              <button onClick={saveProfile} disabled={saving} className={saveBtn} style={monoStyle}>
                 {saved ? "Saved ✓" : saving ? "Saving..." : "Save"}
               </button>
             </div>
@@ -208,22 +208,19 @@ export default function SettingsPage() {
 
         {/* Notifications */}
         <section>
-          <h2 className="text-xs font-semibold text-apple-gray-500 uppercase tracking-wider px-1 mb-2">
+          <h2 className="text-white/40 text-xs font-bold uppercase tracking-widest px-1 mb-3" style={monoStyle}>
             Notifications
           </h2>
-          <div className="bg-white rounded-apple-xl shadow-apple-sm overflow-hidden divide-y divide-apple-gray-100">
+          <div className="border border-white divide-y divide-white/10">
             {[
               "Email me when Alex flags something urgent",
               "Weekly summary",
             ].map((label) => (
               <div key={label} className="px-4 py-3.5 flex items-center justify-between">
-                <span className="text-sm text-apple-gray-700">{label}</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-apple-gray-400 bg-apple-gray-100 px-2 py-0.5 rounded-full">
-                    Coming Soon
-                  </span>
-                  <div className="w-10 h-6 bg-apple-gray-200 rounded-full opacity-40 cursor-not-allowed" />
-                </div>
+                <span className="text-white text-sm">{label}</span>
+                <span className="text-white/30 text-xs border border-white/30 px-2 py-0.5" style={monoStyle}>
+                  Coming Soon
+                </span>
               </div>
             ))}
           </div>
@@ -231,24 +228,25 @@ export default function SettingsPage() {
 
         {/* Billing */}
         <section>
-          <h2 className="text-xs font-semibold text-apple-gray-500 uppercase tracking-wider px-1 mb-2">
+          <h2 className="text-white/40 text-xs font-bold uppercase tracking-widest px-1 mb-3" style={monoStyle}>
             Billing
           </h2>
-          <div className="bg-white rounded-apple-xl shadow-apple-sm overflow-hidden divide-y divide-apple-gray-100">
+          <div className="border border-white divide-y divide-white/10">
             <div className="px-4 py-3.5 flex items-center justify-between">
-              <span className="text-sm text-apple-gray-700">Current plan</span>
-              <span className="text-sm font-medium text-apple-gray-950 bg-apple-gray-100 px-2.5 py-1 rounded-full">
+              <span className="text-white text-sm">Current plan</span>
+              <span className="text-white text-xs border border-white px-2.5 py-1" style={monoStyle}>
                 Free
               </span>
             </div>
             <div className="px-4 py-3.5 flex items-center justify-between">
-              <span className="text-sm text-apple-gray-700">Messages this month</span>
-              <span className="text-sm font-medium text-apple-gray-950">{messageCount}</span>
+              <span className="text-white text-sm">Messages this month</span>
+              <span className="text-white text-sm font-bold" style={monoStyle}>{messageCount}</span>
             </div>
             <div className="px-4 py-3.5">
               <Link
                 href="/pricing"
-                className="block w-full py-2.5 bg-apple-gray-950 text-white text-sm font-medium rounded-apple-md hover:bg-apple-gray-800 transition-all text-center"
+                className="block w-full py-3 bg-white text-black text-xs font-bold uppercase tracking-widest hover:bg-black hover:text-white border border-white transition-colors duration-200 text-center"
+                style={monoStyle}
               >
                 View Plans
               </Link>
@@ -258,37 +256,37 @@ export default function SettingsPage() {
 
         {/* Account */}
         <section>
-          <h2 className="text-xs font-semibold text-apple-gray-500 uppercase tracking-wider px-1 mb-2">
+          <h2 className="text-white/40 text-xs font-bold uppercase tracking-widest px-1 mb-3" style={monoStyle}>
             Account
           </h2>
-          <div className="bg-white rounded-apple-xl shadow-apple-sm overflow-hidden divide-y divide-apple-gray-100">
+          <div className="border border-white divide-y divide-white/10">
             <div className="px-4 py-3.5 flex items-center justify-between">
-              <span className="text-sm text-apple-gray-500">Email</span>
-              <span className="text-sm text-apple-gray-700">{email}</span>
+              <span className="text-white/50 text-sm" style={monoStyle}>Email</span>
+              <span className="text-white text-sm" style={monoStyle}>{email}</span>
             </div>
             <button
               onClick={() => showToast("Coming soon")}
-              className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-apple-gray-50 transition-colors text-left"
+              className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-white/5 transition-colors text-left"
             >
-              <span className="text-sm text-apple-gray-700">Change Password</span>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-apple-gray-400">
+              <span className="text-white text-sm">Change Password</span>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-white/40">
                 <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>
             <button
               onClick={() => setShowFeedback(true)}
-              className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-apple-gray-50 transition-colors text-left"
+              className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-white/5 transition-colors text-left"
             >
-              <span className="text-sm text-apple-gray-700">Give Feedback</span>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-apple-gray-400">
+              <span className="text-white text-sm">Give Feedback</span>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-white/40">
                 <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>
             <button
               onClick={handleSignOut}
-              className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-red-50 transition-colors text-left"
+              className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-red-950/20 transition-colors text-left"
             >
-              <span className="text-sm text-red-500">Sign Out</span>
+              <span className="text-red-400 text-sm">Sign Out</span>
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-red-400">
                 <path d="M6 3H4a1 1 0 00-1 1v8a1 1 0 001 1h2M11 11l3-3-3-3M14 8H6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
@@ -299,7 +297,10 @@ export default function SettingsPage() {
 
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-apple-gray-950 text-white text-sm px-4 py-2.5 rounded-full shadow-apple-lg animate-fade-in">
+        <div
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white text-black text-xs font-bold px-4 py-2.5 uppercase tracking-widest"
+          style={monoStyle}
+        >
           {toast}
         </div>
       )}

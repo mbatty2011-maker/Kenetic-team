@@ -70,12 +70,11 @@ function JobProgressBubble({
   const isActive = job.status === "queued" || job.status === "running";
   const visibleSteps = job.steps.filter((s) => s.type !== "thinking" || isActive);
 
+  const monoStyle = { fontFamily: "var(--font-space-mono), monospace" };
+
   return (
     <div className="flex gap-2.5 justify-start">
-      <div
-        className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0 mt-0.5"
-        style={{ background: alex.accent }}
-      >
+      <div className="w-7 h-7 border border-white flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-0.5 bg-black">
         {alex.initials}
       </div>
 
@@ -83,11 +82,11 @@ function JobProgressBubble({
         {/* Status badge */}
         <div className="flex items-center gap-2">
           {isActive && (
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="animate-spin text-apple-gray-400 flex-shrink-0" style={{ animationDuration: "1.5s" }}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="animate-spin text-white flex-shrink-0" style={{ animationDuration: "1.5s" }}>
               <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.5" strokeDasharray="14 8" />
             </svg>
           )}
-          <span className="text-xs text-apple-gray-500">
+          <span className="text-xs text-white/50" style={monoStyle}>
             {job.status === "queued"  && "Queued…"}
             {job.status === "running" && "Working…"}
             {job.status === "complete" && "Done"}
@@ -96,7 +95,8 @@ function JobProgressBubble({
           {visibleSteps.length > 0 && (
             <button
               onClick={() => setExpanded((e) => !e)}
-              className="text-[11px] text-apple-gray-400 hover:text-apple-gray-600 transition-colors"
+              className="text-[11px] text-white/40 hover:text-white transition-colors"
+              style={monoStyle}
             >
               {expanded ? "hide steps" : `${visibleSteps.length} steps`}
             </button>
@@ -105,22 +105,22 @@ function JobProgressBubble({
 
         {/* Step trail */}
         {expanded && visibleSteps.length > 0 && (
-          <div className="bg-apple-gray-50 border border-apple-gray-100 rounded-apple-lg px-3 py-2 space-y-1.5">
+          <div className="bg-black border border-white/30 px-3 py-2 space-y-1.5">
             {visibleSteps.map((step, i) => (
               <div key={i} className="flex items-start gap-1.5">
                 <span className="text-[11px] flex-shrink-0 mt-px">{STEP_ICONS[step.type] ?? "·"}</span>
                 <div className="min-w-0">
-                  <span className="text-[11px] text-apple-gray-600">{step.summary}</span>
+                  <span className="text-[11px] text-white/60" style={monoStyle}>{step.summary}</span>
                   {step.detail && step.type !== "thinking" && (
-                    <p className="text-[10px] text-apple-gray-400 truncate mt-0.5">{step.detail}</p>
+                    <p className="text-[10px] text-white/30 truncate mt-0.5" style={monoStyle}>{step.detail}</p>
                   )}
                 </div>
               </div>
             ))}
             {isActive && (
               <div className="flex items-center gap-1.5 pt-0.5">
-                <span className="text-[11px]">·</span>
-                <span className="text-[11px] text-apple-gray-400 italic">Still running…</span>
+                <span className="text-[11px] text-white/30">·</span>
+                <span className="text-[11px] text-white/30 italic" style={monoStyle}>Still running…</span>
               </div>
             )}
           </div>
@@ -128,11 +128,12 @@ function JobProgressBubble({
 
         {/* Error state */}
         {job.status === "failed" && (
-          <div className="bg-red-50 border border-red-200 rounded-apple-lg px-3 py-2.5 space-y-2">
-            <p className="text-xs text-red-700">{job.error ?? "An error occurred."}</p>
+          <div className="border border-red-500/50 bg-red-950/10 px-3 py-2.5 space-y-2">
+            <p className="text-xs text-red-400" style={monoStyle}>{job.error ?? "An error occurred."}</p>
             <button
               onClick={onRetry}
-              className="text-xs font-medium text-red-700 underline hover:no-underline"
+              className="text-xs font-bold text-red-400 underline hover:no-underline"
+              style={monoStyle}
             >
               Retry
             </button>
@@ -410,21 +411,18 @@ export default function AlexChatWindow() {
   const hasActivity = messages.length > 0 || activeJobs.size > 0;
 
   return (
-    <div className="flex flex-col h-full min-h-0 bg-white md:bg-apple-gray-50">
+    <div className="flex flex-col h-full min-h-0 bg-black">
       <AgentHeader agentKey="alex" />
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2">
         {!hasActivity && !isLoading && (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
-              <div
-                className="w-12 h-12 rounded-full mx-auto mb-3 flex items-center justify-center text-white font-semibold"
-                style={{ background: alex.accent }}
-              >
+              <div className="w-12 h-12 border border-white mx-auto mb-3 flex items-center justify-center text-white font-bold bg-black">
                 {alex.initials}
               </div>
-              <p className="text-apple-gray-950 font-medium text-sm">Alex</p>
-              <p className="text-apple-gray-500 text-xs mt-1">Chief of Staff</p>
+              <p className="text-white font-bold text-sm">Alex</p>
+              <p className="text-white/40 text-xs mt-1" style={{ fontFamily: "var(--font-space-mono), monospace" }}>Chief of Staff</p>
             </div>
           </div>
         )}

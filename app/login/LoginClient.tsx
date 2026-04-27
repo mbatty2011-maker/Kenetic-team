@@ -27,23 +27,31 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-apple-gray-50 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-black px-4">
       <div className="w-full max-w-sm">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-apple-xl bg-apple-gray-950 mb-4 shadow-apple-md">
-            <span className="text-white font-semibold text-xl tracking-tight">K</span>
-          </div>
-          <h1 className="text-2xl font-semibold text-apple-gray-950 tracking-tight">knetc</h1>
+        <div className="text-center mb-10">
+          <span
+            className="text-white text-2xl font-bold tracking-[0.25em] uppercase"
+            style={{ fontFamily: "var(--font-space-mono), monospace" }}
+          >
+            KNETC
+          </span>
         </div>
 
-        {/* Card */}
-        <div className="bg-white rounded-apple-2xl shadow-apple-md p-8">
-          <h2 className="text-lg font-semibold text-apple-gray-950 mb-6">Sign in</h2>
+        <div className="border border-white p-8">
+          <h2
+            className="text-white text-xs font-bold uppercase tracking-[0.25em] mb-8"
+            style={{ fontFamily: "var(--font-space-mono), monospace" }}
+          >
+            Sign In
+          </h2>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-apple-gray-700 mb-1.5">
+              <label
+                className="block text-white/60 text-xs uppercase tracking-widest mb-2"
+                style={{ fontFamily: "var(--font-space-mono), monospace" }}
+              >
                 Email
               </label>
               <input
@@ -52,13 +60,16 @@ export default function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 autoComplete="email"
-                className="w-full px-3.5 py-2.5 rounded-apple-md border border-apple-gray-200 text-sm text-apple-gray-950 placeholder:text-apple-gray-400 focus:outline-none focus:ring-2 focus:ring-apple-gray-950 focus:border-transparent transition-all"
+                className="w-full bg-transparent border border-white text-white text-sm px-3 py-2.5 focus:outline-none placeholder:text-white/30 rounded-none"
                 placeholder="you@example.com"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-apple-gray-700 mb-1.5">
+              <label
+                className="block text-white/60 text-xs uppercase tracking-widest mb-2"
+                style={{ fontFamily: "var(--font-space-mono), monospace" }}
+              >
                 Password
               </label>
               <input
@@ -67,13 +78,16 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 autoComplete="current-password"
-                className="w-full px-3.5 py-2.5 rounded-apple-md border border-apple-gray-200 text-sm text-apple-gray-950 placeholder:text-apple-gray-400 focus:outline-none focus:ring-2 focus:ring-apple-gray-950 focus:border-transparent transition-all"
+                className="w-full bg-transparent border border-white text-white text-sm px-3 py-2.5 focus:outline-none placeholder:text-white/30 rounded-none"
                 placeholder="••••••••"
               />
             </div>
 
             {error && (
-              <p className="text-sm text-red-500 bg-red-50 rounded-apple-md px-3.5 py-2.5">
+              <p
+                className="text-red-400 border border-red-500 px-3 py-2 text-xs"
+                style={{ fontFamily: "var(--font-space-mono), monospace" }}
+              >
                 {error}
               </p>
             )}
@@ -81,16 +95,20 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-apple-gray-950 text-white py-2.5 rounded-apple-md text-sm font-medium hover:bg-apple-gray-800 active:bg-apple-gray-950 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-apple-sm"
+              className="w-full bg-white text-black py-3 text-xs font-bold uppercase tracking-widest hover:bg-black hover:text-white border border-white transition-colors duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ fontFamily: "var(--font-space-mono), monospace" }}
             >
-              {loading ? "Signing in..." : "Sign in"}
+              {loading ? "Signing in..." : "Sign In →"}
             </button>
           </form>
         </div>
 
-        <p className="text-center text-sm text-apple-gray-500 mt-6">
+        <p
+          className="text-center text-xs text-white/40 mt-6"
+          style={{ fontFamily: "var(--font-space-mono), monospace" }}
+        >
           No account?{" "}
-          <Link href="/signup" className="text-apple-gray-950 font-medium hover:underline">
+          <Link href="/signup" className="text-white hover:underline">
             Create one
           </Link>
         </p>

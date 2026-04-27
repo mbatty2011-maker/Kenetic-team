@@ -15,11 +15,11 @@ export default function ChatLayoutClient({
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-apple-gray-50">
+    <div className="flex h-screen overflow-hidden bg-black">
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/40 z-20 md:hidden"
+          className="fixed inset-0 bg-black/80 z-20 md:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -40,22 +40,21 @@ export default function ChatLayoutClient({
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Mobile header */}
-        <div className="md:hidden flex items-center px-4 py-3 bg-white border-b border-apple-gray-100">
+        <div className="md:hidden flex items-center px-4 py-3 bg-black border-b border-white">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="p-2 rounded-apple-md hover:bg-apple-gray-50 active:bg-apple-gray-100 transition-colors"
+            className="p-2 border border-white text-white hover:bg-white hover:text-black transition-colors duration-200"
           >
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <rect x="2" y="4" width="14" height="1.5" rx="0.75" fill="#1C1C1E" />
-              <rect x="2" y="8.25" width="14" height="1.5" rx="0.75" fill="#1C1C1E" />
-              <rect x="2" y="12.5" width="14" height="1.5" rx="0.75" fill="#1C1C1E" />
+              <rect x="2" y="4" width="14" height="1.5" fill="currentColor" />
+              <rect x="2" y="8.25" width="14" height="1.5" fill="currentColor" />
+              <rect x="2" y="12.5" width="14" height="1.5" fill="currentColor" />
             </svg>
           </button>
         </div>
 
         <ErrorBoundary>{children}</ErrorBoundary>
       </div>
-
     </div>
   );
 }

@@ -31,6 +31,8 @@ export default function MessageBubble({
     ? AGENTS.find((a) => a.key === message.agent_key)
     : null;
 
+  const monoStyle = { fontFamily: "var(--font-space-mono), monospace" };
+
   async function copyContent() {
     try {
       await navigator.clipboard.writeText(message.content);
@@ -42,9 +44,9 @@ export default function MessageBubble({
   if (isSystem) {
     return (
       <div className="flex justify-center my-2 animate-fade-in">
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-apple-gray-50 rounded-full border border-apple-gray-100">
-          <div className="w-1.5 h-1.5 rounded-full bg-apple-gray-400" />
-          <span className="text-xs text-apple-gray-500">{message.content}</span>
+        <div className="flex items-center gap-2 px-3 py-1.5 border border-white/20">
+          <div className="w-1.5 h-1.5 bg-white/40" />
+          <span className="text-xs text-white/40" style={monoStyle}>{message.content}</span>
         </div>
       </div>
     );
@@ -53,13 +55,10 @@ export default function MessageBubble({
   if (isUser) {
     return (
       <div className="flex justify-end items-end gap-2 animate-slide-in-right group">
-        <span className="text-[10px] text-apple-gray-400 opacity-0 group-hover:opacity-100 transition-opacity mb-0.5 flex-shrink-0">
+        <span className="text-[10px] text-white/30 opacity-0 group-hover:opacity-100 transition-opacity mb-0.5 flex-shrink-0" style={monoStyle}>
           {formatTimestamp(message.created_at)}
         </span>
-        <div
-          className="max-w-[75%] px-4 py-2.5 rounded-apple-2xl rounded-br-apple-sm text-white text-sm leading-relaxed whitespace-pre-wrap break-words"
-          style={{ background: senderAgent?.accent || "#1C1C1E" }}
-        >
+        <div className="max-w-[75%] px-4 py-2.5 bg-white text-black text-sm leading-relaxed whitespace-pre-wrap break-words">
           {message.content}
         </div>
       </div>
@@ -68,42 +67,37 @@ export default function MessageBubble({
 
   return (
     <div className="flex items-start gap-2 animate-slide-in-left group">
-      <div
-        className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0 mt-0.5"
-        style={{ background: senderAgent?.accent || "#48484A" }}
-      >
+      <div className="w-7 h-7 border border-white flex items-center justify-center text-white text-xs font-bold flex-shrink-0 mt-0.5 bg-black">
         {senderAgent?.initials ?? "?"}
       </div>
 
       <div className="max-w-[78%] min-w-0">
         {currentAgentKey === "boardroom" && senderAgent && (
-          <div
-            className="text-xs font-semibold mb-1.5 ml-0.5"
-            style={{ color: senderAgent.accent }}
-          >
+          <div className="text-xs font-bold mb-1.5 ml-0.5 text-white uppercase tracking-widest" style={monoStyle}>
             {senderAgent.name} · {senderAgent.role}
           </div>
         )}
 
-        <div className="px-4 py-3 rounded-apple-2xl rounded-tl-apple-sm bg-apple-gray-50 border border-apple-gray-100">
+        <div className="px-4 py-3 bg-black border border-white">
           {message.content ? (
             <>
               <MarkdownContent content={message.content} />
               {message.isStreaming && (
-                <span className="inline-block w-0.5 h-3.5 bg-apple-gray-400 ml-0.5 animate-pulse align-middle" />
+                <span className="inline-block w-0.5 h-3.5 bg-white ml-0.5 animate-pulse align-middle" />
               )}
             </>
           ) : message.isStreaming ? (
-            <span className="inline-block w-0.5 h-3.5 bg-apple-gray-400 animate-pulse align-middle" />
+            <span className="inline-block w-0.5 h-3.5 bg-white animate-pulse align-middle" />
           ) : null}
         </div>
 
-        {/* Copy + timestamp — fade in on hover */}
+        {/* Copy + timestamp */}
         {!message.isStreaming && message.content && (
           <div className="flex items-center gap-2 mt-1 ml-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <button
               onClick={copyContent}
-              className="flex items-center gap-1 text-[10px] text-apple-gray-400 hover:text-apple-gray-700 transition-colors"
+              className="flex items-center gap-1 text-[10px] text-white/40 hover:text-white transition-colors"
+              style={monoStyle}
             >
               {copied ? (
                 <>
@@ -122,7 +116,7 @@ export default function MessageBubble({
                 </>
               )}
             </button>
-            <span className="text-[10px] text-apple-gray-300">
+            <span className="text-[10px] text-white/20" style={monoStyle}>
               {formatTimestamp(message.created_at)}
             </span>
           </div>

@@ -113,13 +113,13 @@ export default function PricingPage() {
   }
 
   return (
-    <div className="h-screen overflow-y-auto bg-apple-gray-50">
+    <div className="h-screen overflow-y-auto bg-black">
       {/* Header */}
-      <div className="glass border-b border-apple-gray-100 sticky top-0 z-10">
+      <div className="border-b border-white sticky top-0 z-10 bg-black">
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center gap-3">
           <Link
             href="/chat"
-            className="p-2 rounded-apple-md hover:bg-apple-gray-100 transition-colors text-apple-gray-500 hover:text-apple-gray-950"
+            className="p-2 border border-white text-white hover:bg-white hover:text-black transition-colors duration-200"
           >
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
               <path
@@ -131,24 +131,35 @@ export default function PricingPage() {
               />
             </svg>
           </Link>
-          <h1 className="text-lg font-semibold text-apple-gray-950">Plans &amp; Pricing</h1>
+          <h1
+            className="text-white text-xs font-bold uppercase tracking-widest"
+            style={{ fontFamily: "var(--font-space-mono), monospace" }}
+          >
+            Plans &amp; Pricing
+          </h1>
         </div>
       </div>
 
       <div className="max-w-4xl mx-auto px-4 py-10 pb-16">
         {/* Hero */}
         <div className="text-center mb-10">
-          <h2 className="text-3xl font-semibold text-apple-gray-950 mb-2">
-            Your AI executive team
+          <h2 className="text-white text-3xl font-bold tracking-tight mb-2 uppercase">
+            Your AI Executive Team
           </h2>
-          <p className="text-apple-gray-500 text-base">
+          <p
+            className="text-white/50 text-xs"
+            style={{ fontFamily: "var(--font-space-mono), monospace" }}
+          >
             Pick the plan that fits your stage. Upgrade or cancel anytime.
           </p>
         </div>
 
         {/* Error banner */}
         {error && (
-          <div className="mb-6 px-4 py-3 bg-red-50 border border-red-100 rounded-apple-md text-sm text-red-600 text-center animate-fade-in">
+          <div
+            className="mb-6 px-4 py-3 border border-red-500 text-red-400 text-xs text-center"
+            style={{ fontFamily: "var(--font-space-mono), monospace" }}
+          >
             {error}
           </div>
         )}
@@ -158,54 +169,57 @@ export default function PricingPage() {
           {PLANS.map((plan) => (
             <div
               key={plan.name}
-              className={`relative bg-white rounded-apple-xl flex flex-col overflow-hidden transition-all ${
+              className={`relative flex flex-col overflow-hidden ${
                 plan.featured
-                  ? "shadow-apple-lg ring-2 ring-apple-gray-950"
-                  : "shadow-apple-sm"
+                  ? "bg-white text-black"
+                  : "bg-black text-white border border-white"
               }`}
             >
               {plan.featured && (
-                <div className="bg-apple-gray-950 text-white text-xs font-medium text-center py-1.5 tracking-wide">
+                <div
+                  className="bg-black text-white text-xs font-bold text-center py-1.5 tracking-widest uppercase"
+                  style={{ fontFamily: "var(--font-space-mono), monospace" }}
+                >
                   Most Popular
                 </div>
               )}
 
               <div className="p-6 flex flex-col flex-1">
                 <div className="mb-5">
-                  <h3 className="text-base font-semibold text-apple-gray-950 mb-0.5">
+                  <h3 className="text-base font-bold uppercase tracking-widest mb-0.5">
                     {plan.name}
                   </h3>
-                  <p className="text-sm text-apple-gray-400">{plan.tagline}</p>
+                  <p
+                    className={`text-xs ${plan.featured ? "text-black/50" : "text-white/50"}`}
+                    style={{ fontFamily: "var(--font-space-mono), monospace" }}
+                  >
+                    {plan.tagline}
+                  </p>
                 </div>
 
                 <div className="mb-6 flex items-baseline gap-1">
-                  <span className="text-4xl font-semibold text-apple-gray-950">
+                  <span
+                    className="text-4xl font-bold"
+                    style={{ fontFamily: "var(--font-space-mono), monospace" }}
+                  >
                     ${plan.price}
                   </span>
-                  <span className="text-apple-gray-400 text-sm">/mo</span>
+                  <span
+                    className={`text-xs ${plan.featured ? "text-black/50" : "text-white/50"}`}
+                    style={{ fontFamily: "var(--font-space-mono), monospace" }}
+                  >
+                    /mo
+                  </span>
                 </div>
 
                 <ul className="space-y-2.5 flex-1 mb-6">
                   {plan.features.map((feature) => (
                     <li
                       key={feature}
-                      className="flex items-start gap-2.5 text-sm text-apple-gray-700"
+                      className="flex items-start gap-2.5 text-xs"
+                      style={{ fontFamily: "var(--font-space-mono), monospace" }}
                     >
-                      <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 16 16"
-                        fill="none"
-                        className="flex-shrink-0 mt-0.5 text-apple-gray-950"
-                      >
-                        <path
-                          d="M3 8L6.5 11.5L13 5"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
+                      <span className="font-bold flex-shrink-0 mt-0.5">✓</span>
                       {feature}
                     </li>
                   ))}
@@ -214,11 +228,12 @@ export default function PricingPage() {
                 <button
                   onClick={() => handleUpgrade(plan.tier)}
                   disabled={loading !== null}
-                  className={`w-full py-2.5 rounded-apple-md text-sm font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+                  className={`w-full py-3 text-xs font-bold uppercase tracking-widest transition-colors duration-200 disabled:opacity-40 disabled:cursor-not-allowed ${
                     plan.featured
-                      ? "bg-apple-gray-950 text-white hover:bg-apple-gray-800"
-                      : "bg-apple-gray-100 text-apple-gray-950 hover:bg-apple-gray-200"
+                      ? "bg-black text-white border border-black hover:bg-white hover:text-black hover:border-black"
+                      : "bg-white text-black border border-white hover:bg-black hover:text-white"
                   }`}
+                  style={{ fontFamily: "var(--font-space-mono), monospace" }}
                 >
                   {loading === plan.tier ? "Redirecting…" : plan.cta}
                 </button>
@@ -227,11 +242,14 @@ export default function PricingPage() {
           ))}
         </div>
 
-        <p className="text-center text-xs text-apple-gray-400 mt-8">
+        <p
+          className="text-center text-xs text-white/30 mt-8"
+          style={{ fontFamily: "var(--font-space-mono), monospace" }}
+        >
           Billed monthly. Cancel anytime. Questions?{" "}
           <a
             href="mailto:hello@knetc.team"
-            className="underline hover:text-apple-gray-600 transition-colors"
+            className="underline hover:text-white transition-colors"
           >
             Contact us
           </a>

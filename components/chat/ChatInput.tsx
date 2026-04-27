@@ -50,13 +50,11 @@ export default function ChatInput({
     if (textareaRef.current) textareaRef.current.style.height = "auto";
   }
 
-  const accentColor = agent?.accent || "#1C1C1E";
-
   return (
     <div className="px-4 pb-4 pt-2">
       <div
-        className={`bg-white rounded-apple-xl border shadow-apple-sm flex items-end gap-2 px-3 py-2 focus-within:border-apple-gray-400 transition-colors ${
-          isOverLimit ? "border-red-300 focus-within:border-red-400" : "border-apple-gray-200"
+        className={`bg-black border flex items-end gap-2 px-3 py-2 ${
+          isOverLimit ? "border-red-500" : "border-white"
         }`}
       >
         <textarea
@@ -67,7 +65,7 @@ export default function ChatInput({
           disabled={isLoading}
           placeholder={`Message ${agentKey === "boardroom" ? "Boardroom" : (agent?.name ?? "")}...`}
           rows={1}
-          className="flex-1 text-sm text-apple-gray-950 placeholder:text-apple-gray-400 leading-5 py-1 bg-transparent disabled:opacity-50"
+          className="flex-1 text-sm text-white placeholder:text-white/30 leading-5 py-1 bg-transparent disabled:opacity-50 focus:outline-none resize-none"
           style={{ minHeight: "28px", maxHeight: "120px" }}
         />
 
@@ -75,8 +73,9 @@ export default function ChatInput({
           {showCounter && (
             <span
               className={`text-[10px] tabular-nums transition-colors ${
-                isOverLimit ? "text-red-500 font-semibold" : "text-apple-gray-400"
+                isOverLimit ? "text-red-400 font-bold" : "text-white/40"
               }`}
+              style={{ fontFamily: "var(--font-space-mono), monospace" }}
             >
               {charCount.toLocaleString()}/{MAX_CHARS.toLocaleString()}
             </span>
@@ -84,13 +83,12 @@ export default function ChatInput({
           <button
             onClick={handleSend}
             disabled={!value.trim() || isLoading || isOverLimit}
-            className="w-8 h-8 rounded-full flex items-center justify-center text-white transition-all disabled:opacity-30 hover:opacity-80 active:scale-95"
-            style={{ background: accentColor }}
+            className="w-8 h-8 flex items-center justify-center text-black bg-white border border-white hover:bg-black hover:text-white transition-colors duration-200 disabled:opacity-30"
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <path
                 d="M2 7L7 2L12 7M7 2V12"
-                stroke="white"
+                stroke="currentColor"
                 strokeWidth="1.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -99,7 +97,10 @@ export default function ChatInput({
           </button>
         </div>
       </div>
-      <p className="text-center text-xs text-apple-gray-400 mt-1.5">
+      <p
+        className="text-center text-xs text-white/30 mt-1.5"
+        style={{ fontFamily: "var(--font-space-mono), monospace" }}
+      >
         Enter to send · Shift+Enter for new line
       </p>
     </div>

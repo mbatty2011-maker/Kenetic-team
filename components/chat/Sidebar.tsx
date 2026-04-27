@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
 import { User } from "@supabase/supabase-js";
 import { AGENTS } from "@/lib/agents";
 import { createClient } from "@/lib/supabase/client";
@@ -38,7 +37,6 @@ export default function Sidebar({
 
   const currentAgent = pathname.split("/")[2] || "alex";
 
-  // Auto-expand the active agent's conversation list
   useEffect(() => {
     if (currentAgent && currentAgent !== "tasks" && currentAgent !== "boardroom") {
       setExpandedAgent(currentAgent);
@@ -48,7 +46,6 @@ export default function Sidebar({
   useEffect(() => {
     loadConversations();
 
-    // Real-time subscription — sidebar refreshes whenever conversations change
     const channel = supabase
       .channel("sidebar-conversations")
       .on(
@@ -148,14 +145,18 @@ export default function Sidebar({
     router.push("/login");
   }
 
+  const monoStyle = { fontFamily: "var(--font-space-mono), monospace" };
+
   return (
-    <div className="h-full flex flex-col dark-scrollbar" style={{ background: "#1C1C1E" }}>
+    <div className="h-full flex flex-col bg-black dark-scrollbar">
       {/* Logo */}
       <div className="px-4 pt-5 pb-4 flex items-center">
-        <Image src="/knetc-logo.png" alt="knetc team" width={96} height={26} className="h-6 w-auto invert" />
+        <span className="text-white text-sm font-bold tracking-[0.25em] uppercase" style={monoStyle}>
+          KNETC
+        </span>
       </div>
 
-      <div className="mx-3 border-t border-white/8 mb-2" />
+      <div className="mx-3 border-t border-white mb-2" />
 
       {/* Agent list */}
       <div className="flex-1 overflow-y-auto dark-scrollbar px-2 space-y-0.5">
@@ -167,8 +168,8 @@ export default function Sidebar({
           return (
             <div key={agent.key}>
               <div
-                className={`flex items-center gap-2.5 px-2 py-2 rounded-apple-md cursor-pointer transition-colors duration-200 group ${
-                  isActive ? "bg-white/12" : "hover:bg-white/6"
+                className={`flex items-center gap-2.5 px-2 py-2 cursor-pointer transition-colors duration-200 group ${
+                  isActive ? "border-l-2 border-white" : "hover:bg-white/8"
                 }`}
               >
                 <Link
@@ -176,21 +177,18 @@ export default function Sidebar({
                   className="flex items-center gap-2.5 flex-1 min-w-0"
                   onClick={onClose}
                 >
-                  <div
-                    className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-white text-xs font-semibold"
-                    style={{ background: agent.accent }}
-                  >
+                  <div className="w-7 h-7 border border-white flex items-center justify-center flex-shrink-0 text-white text-xs font-bold bg-black">
                     {agent.initials}
                   </div>
                   <div className="min-w-0">
                     <div className="text-white text-sm font-medium leading-none truncate">{agent.name}</div>
-                    <div className="text-white/40 text-xs mt-0.5 truncate">{agent.role}</div>
+                    <div className="text-white/40 text-xs mt-0.5 truncate" style={monoStyle}>{agent.role}</div>
                   </div>
                 </Link>
 
                 <button
                   onClick={(e) => { e.stopPropagation(); newConversation(agent.key); }}
-                  className="opacity-0 group-hover:opacity-100 w-5 h-5 rounded flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-all flex-shrink-0"
+                  className="opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-all flex-shrink-0"
                   title="New conversation"
                 >
                   <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
@@ -201,7 +199,7 @@ export default function Sidebar({
                 {agentConvos.length > 0 && (
                   <button
                     onClick={() => setExpandedAgent(isExpanded ? null : agent.key)}
-                    className="opacity-0 group-hover:opacity-100 w-5 h-5 rounded flex items-center justify-center text-white/40 hover:text-white transition-all flex-shrink-0"
+                    className="opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center text-white/40 hover:text-white transition-all flex-shrink-0"
                   >
                     <svg
                       width="10"
@@ -227,19 +225,21 @@ export default function Sidebar({
                       return (
                         <div
                           key={convo.id}
-                          className="px-2 py-2 rounded-apple-md bg-red-900/20 border border-red-500/20"
+                          className="px-2 py-2 border border-red-500/40 bg-red-950/10"
                         >
-                          <p className="text-white/70 text-xs mb-2">Delete this conversation?</p>
+                          <p className="text-white/70 text-xs mb-2" style={monoStyle}>Delete this conversation?</p>
                           <div className="flex gap-1.5">
                             <button
                               onClick={() => deleteConversation(convo.id, agent.key)}
-                              className="text-[10px] px-2 py-1 bg-red-600 text-white rounded font-medium hover:bg-red-700 transition-colors"
+                              className="text-[10px] px-2 py-1 bg-red-600 text-white font-bold hover:bg-red-700 transition-colors"
+                              style={monoStyle}
                             >
                               Delete
                             </button>
                             <button
                               onClick={() => setDeletingId(null)}
-                              className="text-[10px] px-2 py-1 bg-white/10 text-white/60 rounded hover:bg-white/20 transition-colors"
+                              className="text-[10px] px-2 py-1 border border-white/30 text-white/60 hover:text-white transition-colors"
+                              style={monoStyle}
                             >
                               Cancel
                             </button>
@@ -260,7 +260,8 @@ export default function Sidebar({
                               if (e.key === "Enter") renameConversation(convo.id);
                               if (e.key === "Escape") setRenamingId(null);
                             }}
-                            className="w-full text-xs bg-white/10 text-white px-2 py-1 rounded focus:outline-none focus:ring-1 focus:ring-white/30"
+                            className="w-full text-xs bg-black border border-white text-white px-2 py-1 focus:outline-none"
+                            style={monoStyle}
                           />
                         </div>
                       );
@@ -269,8 +270,8 @@ export default function Sidebar({
                     return (
                       <div
                         key={convo.id}
-                        className={`group/convo flex items-center rounded-apple-md transition-colors duration-200 ${
-                          isActiveConvo ? "bg-white/10" : "hover:bg-white/6"
+                        className={`group/convo flex items-center transition-colors duration-200 ${
+                          isActiveConvo ? "border-l-2 border-white" : "hover:bg-white/5"
                         }`}
                       >
                         <Link
@@ -278,20 +279,19 @@ export default function Sidebar({
                           onClick={onClose}
                           className="flex items-center justify-between flex-1 min-w-0 px-2 py-1.5"
                         >
-                          <span className="text-white/60 text-xs truncate flex-1 min-w-0">
+                          <span className="text-white/60 text-xs truncate flex-1 min-w-0" style={monoStyle}>
                             {convo.title || "New conversation"}
                           </span>
-                          <span className="text-white/30 text-xs flex-shrink-0 ml-2 group-hover/convo:hidden">
+                          <span className="text-white/30 text-xs flex-shrink-0 ml-2 group-hover/convo:hidden" style={monoStyle}>
                             {formatTime(convo.updated_at)}
                           </span>
                         </Link>
 
-                        {/* Action buttons — visible on hover */}
                         <div className="hidden group-hover/convo:flex items-center gap-0.5 pr-1.5 flex-shrink-0">
                           <button
                             onClick={(e) => { e.stopPropagation(); startRename(convo); }}
                             title="Rename"
-                            className="w-5 h-5 rounded flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+                            className="w-5 h-5 flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-colors"
                           >
                             <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
                               <path d="M1.5 6.5L5.5 2.5l1.5 1.5-4 4H1.5V6.5zM5 3l1.5-1.5L8 3l-1.5 1.5L5 3z" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" strokeLinejoin="round" />
@@ -300,7 +300,7 @@ export default function Sidebar({
                           <button
                             onClick={(e) => { e.stopPropagation(); setDeletingId(convo.id); }}
                             title="Delete"
-                            className="w-5 h-5 rounded flex items-center justify-center text-white/40 hover:text-red-400 hover:bg-white/10 transition-colors"
+                            className="w-5 h-5 flex items-center justify-center text-white/40 hover:text-red-400 hover:bg-white/10 transition-colors"
                           >
                             <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
                               <path d="M1.5 2.5h6M3 2.5V1.5h3v1M2 2.5l.5 5h4l.5-5" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" strokeLinejoin="round" />
@@ -318,86 +318,79 @@ export default function Sidebar({
 
         {/* Boardroom */}
         <div className="mt-1">
-          <div className="mx-2 border-t border-white/8 mb-2" />
+          <div className="mx-2 border-t border-white mb-2" />
           <Link
             href="/chat/boardroom"
             onClick={onClose}
-            className={`flex items-center gap-2.5 px-2 py-2 rounded-apple-md transition-colors duration-200 ${
-              currentAgent === "boardroom" ? "bg-white/12" : "hover:bg-white/6"
+            className={`flex items-center gap-2.5 px-2 py-2 transition-colors duration-200 ${
+              currentAgent === "boardroom" ? "border-l-2 border-white" : "hover:bg-white/8"
             }`}
           >
-            <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0">
+            <div className="w-7 h-7 border border-white flex items-center justify-center flex-shrink-0 bg-black">
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <circle cx="5" cy="5" r="2.5" stroke="white" strokeWidth="1.3" strokeOpacity="0.7" />
-                <circle cx="9.5" cy="5" r="2.5" stroke="white" strokeWidth="1.3" strokeOpacity="0.7" />
-                <path d="M1 12c0-2.2 1.8-4 4-4M8.5 12c0-2.2 1.8-4 4-4" stroke="white" strokeWidth="1.3" strokeLinecap="round" strokeOpacity="0.7" />
+                <circle cx="5" cy="5" r="2.5" stroke="white" strokeWidth="1.3" />
+                <circle cx="9.5" cy="5" r="2.5" stroke="white" strokeWidth="1.3" />
+                <path d="M1 12c0-2.2 1.8-4 4-4M8.5 12c0-2.2 1.8-4 4-4" stroke="white" strokeWidth="1.3" strokeLinecap="round" />
               </svg>
             </div>
             <div>
               <div className="text-white text-sm font-medium leading-none">Boardroom</div>
-              <div className="text-white/40 text-xs mt-0.5">All agents</div>
+              <div className="text-white/40 text-xs mt-0.5" style={monoStyle}>All agents</div>
             </div>
           </Link>
         </div>
       </div>
 
       {/* Bottom — Settings + Feedback + Sign out */}
-      <div className="px-2 pb-4 pt-2 border-t border-white/8 mt-2 space-y-0.5">
+      <div className="px-2 pb-4 pt-2 border-t border-white mt-2 space-y-0.5">
         <Link
           href="/pricing"
           onClick={onClose}
-          className="flex items-center gap-2.5 px-2 py-2 rounded-apple-md hover:bg-white/6 transition-colors"
+          className="flex items-center gap-2.5 px-2 py-2 hover:bg-white/8 transition-colors"
         >
-          <div className="w-7 h-7 rounded-full bg-white/8 flex items-center justify-center flex-shrink-0">
+          <div className="w-7 h-7 border border-white/30 flex items-center justify-center flex-shrink-0">
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path
-                d="M7 11V3M3.5 6.5L7 3L10.5 6.5"
-                stroke="white"
-                strokeWidth="1.3"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeOpacity="0.6"
-              />
+              <path d="M7 11V3M3.5 6.5L7 3L10.5 6.5" stroke="white" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" strokeOpacity="0.6" />
             </svg>
           </div>
-          <span className="text-white/60 text-sm">Upgrade</span>
+          <span className="text-white/60 text-sm" style={monoStyle}>Upgrade</span>
         </Link>
 
         <Link
           href="/settings"
-          className="flex items-center gap-2.5 px-2 py-2 rounded-apple-md hover:bg-white/6 transition-colors"
+          className="flex items-center gap-2.5 px-2 py-2 hover:bg-white/8 transition-colors"
         >
-          <div className="w-7 h-7 rounded-full bg-white/8 flex items-center justify-center flex-shrink-0">
+          <div className="w-7 h-7 border border-white/30 flex items-center justify-center flex-shrink-0">
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <circle cx="7" cy="7" r="2" stroke="white" strokeWidth="1.3" strokeOpacity="0.6" />
               <path d="M7 1.5v1M7 11.5v1M1.5 7h1M11.5 7h1M3.11 3.11l.71.71M10.18 10.18l.71.71M10.18 3.82l-.71.71M3.82 10.18l-.71.71" stroke="white" strokeWidth="1.3" strokeLinecap="round" strokeOpacity="0.6" />
             </svg>
           </div>
-          <span className="text-white/60 text-sm">Settings</span>
+          <span className="text-white/60 text-sm" style={monoStyle}>Settings</span>
         </Link>
 
         <button
           onClick={() => setShowFeedback(true)}
-          className="w-full flex items-center gap-2.5 px-2 py-2 rounded-apple-md hover:bg-white/6 transition-colors text-left"
+          className="w-full flex items-center gap-2.5 px-2 py-2 hover:bg-white/8 transition-colors text-left"
         >
-          <div className="w-7 h-7 rounded-full bg-white/8 flex items-center justify-center flex-shrink-0">
+          <div className="w-7 h-7 border border-white/30 flex items-center justify-center flex-shrink-0">
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <path d="M2 2h10a1 1 0 011 1v6a1 1 0 01-1 1H8l-3 2v-2H2a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="white" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" strokeOpacity="0.6" />
             </svg>
           </div>
-          <span className="text-white/60 text-sm">Give Feedback</span>
+          <span className="text-white/60 text-sm" style={monoStyle}>Give Feedback</span>
         </button>
 
         <button
           onClick={handleSignOut}
-          className="w-full flex items-center gap-2.5 px-2 py-2 rounded-apple-md hover:bg-white/6 transition-colors text-left"
+          className="w-full flex items-center gap-2.5 px-2 py-2 hover:bg-white/8 transition-colors text-left"
         >
-          <div className="w-7 h-7 rounded-full bg-white/8 flex items-center justify-center flex-shrink-0">
+          <div className="w-7 h-7 border border-white/30 flex items-center justify-center flex-shrink-0">
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <path d="M5 2H3a1 1 0 00-1 1v8a1 1 0 001 1h2M10 10l3-3-3-3M13 7H5" stroke="white" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" strokeOpacity="0.6" />
             </svg>
           </div>
-          <span className="text-white/60 text-sm">Sign out</span>
+          <span className="text-white/60 text-sm" style={monoStyle}>Sign out</span>
         </button>
       </div>
 

@@ -74,23 +74,27 @@ export default function OnboardingClient() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-apple-gray-50 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-black px-4">
       <div className="w-full max-w-lg">
-        {/* Header */}
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-apple-xl bg-apple-gray-950 mb-4 shadow-apple-md">
-            <span className="text-white font-semibold text-xl tracking-tight">K</span>
-          </div>
-          <h1 className="text-2xl font-semibold text-apple-gray-950 tracking-tight">
+        <div className="text-center mb-12">
+          <span
+            className="text-white text-2xl font-bold tracking-[0.25em] uppercase block mb-6"
+            style={{ fontFamily: "var(--font-space-mono), monospace" }}
+          >
+            KNETC
+          </span>
+          <h1 className="text-white text-2xl font-bold tracking-tight mb-2">
             What&apos;s on your mind?
           </h1>
-          <p className="text-sm text-apple-gray-500 mt-1">
+          <p
+            className="text-white/50 text-xs"
+            style={{ fontFamily: "var(--font-space-mono), monospace" }}
+          >
             Tell Alex what you&apos;re working on — he&apos;ll loop in the right people.
           </p>
         </div>
 
-        {/* Card */}
-        <div className="bg-white rounded-apple-2xl shadow-apple-md p-8">
+        <div className="border border-white p-6">
           <textarea
             ref={textareaRef}
             rows={5}
@@ -98,10 +102,9 @@ export default function OnboardingClient() {
             onChange={(e) => setText(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="We're building a SaaS for small restaurants. I need help figuring out our go-to-market strategy…"
-            className="w-full px-3.5 py-2.5 rounded-apple-md border border-apple-gray-200 text-sm text-apple-gray-950 placeholder:text-apple-gray-400 focus:outline-none focus:ring-2 focus:ring-apple-gray-950 focus:border-transparent transition-all resize-none"
+            className="w-full bg-transparent border border-white text-white text-sm px-3 py-2.5 placeholder:text-white/30 focus:outline-none resize-none rounded-none"
           />
 
-          {/* Example chips */}
           <div className="mt-3 flex flex-col gap-1.5">
             {EXAMPLE_CHIPS.map((chip) => (
               <button
@@ -110,7 +113,8 @@ export default function OnboardingClient() {
                   setText(chip);
                   textareaRef.current?.focus();
                 }}
-                className="text-left text-xs text-apple-gray-500 hover:text-apple-gray-800 bg-apple-gray-50 hover:bg-apple-gray-100 border border-apple-gray-100 rounded-apple-md px-3 py-2 transition-all truncate"
+                className="text-left text-xs text-white/50 hover:text-white border border-white/30 hover:border-white px-3 py-2 transition-colors duration-200 truncate"
+                style={{ fontFamily: "var(--font-space-mono), monospace" }}
               >
                 {chip}
               </button>
@@ -118,7 +122,10 @@ export default function OnboardingClient() {
           </div>
 
           {error && (
-            <p className="mt-3 text-sm text-red-500 bg-red-50 rounded-apple-md px-3.5 py-2.5">
+            <p
+              className="mt-3 text-red-400 border border-red-500 px-3 py-2 text-xs"
+              style={{ fontFamily: "var(--font-space-mono), monospace" }}
+            >
               {error}
             </p>
           )}
@@ -126,12 +133,16 @@ export default function OnboardingClient() {
           <button
             onClick={handleSubmit}
             disabled={!text.trim() || loading}
-            className="mt-5 w-full py-2.5 bg-apple-gray-950 text-white text-sm font-medium rounded-apple-md hover:bg-apple-gray-800 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-apple-sm"
+            className="mt-5 w-full py-3 bg-white text-black text-xs font-bold uppercase tracking-widest hover:bg-black hover:text-white border border-white transition-colors duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+            style={{ fontFamily: "var(--font-space-mono), monospace" }}
           >
             {loading ? "Setting up…" : "Talk to Alex →"}
           </button>
 
-          <p className="text-center text-xs text-apple-gray-400 mt-3">
+          <p
+            className="text-center text-xs text-white/30 mt-3"
+            style={{ fontFamily: "var(--font-space-mono), monospace" }}
+          >
             Press <kbd className="font-mono">⌘ Enter</kbd> to send
           </p>
         </div>

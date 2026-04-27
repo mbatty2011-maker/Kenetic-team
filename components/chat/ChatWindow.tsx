@@ -123,7 +123,6 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
     };
     setMessages((prev) => [...prev, userMsg]);
 
-    // Save user message to Supabase
     await supabase.from("messages").insert({
       conversation_id: cid,
       user_id: user.id,
@@ -246,7 +245,6 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
         });
       }
 
-      // Auto-generate a better title after the first exchange
       if (isNewConvoRef.current) {
         isNewConvoRef.current = false;
         fetch(`/api/conversation/${cid}/title`, { method: "POST" }).catch(() => {});
@@ -329,21 +327,14 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0 bg-white md:bg-apple-gray-50">
-      {/* Header */}
+    <div className="flex flex-col h-full min-h-0 bg-black">
       <AgentHeader agentKey={agentKey} />
 
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2">
         {messages.length === 0 && !isLoading && (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
-              <div
-                className="w-12 h-12 rounded-full mx-auto mb-3 flex items-center justify-center text-white font-semibold"
-                style={{
-                  background: isBoardroom ? "#48484A" : agent?.accent,
-                }}
-              >
+              <div className="w-12 h-12 border border-white mx-auto mb-3 flex items-center justify-center text-white font-bold">
                 {isBoardroom ? (
                   <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                     <circle cx="7" cy="7" r="3.5" stroke="white" strokeWidth="1.5" />
@@ -354,10 +345,13 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
                   agent?.initials
                 )}
               </div>
-              <p className="text-apple-gray-950 font-medium text-sm">
+              <p className="text-white font-bold text-sm">
                 {isBoardroom ? "Boardroom" : agent?.name}
               </p>
-              <p className="text-apple-gray-500 text-xs mt-1">
+              <p
+                className="text-white/40 text-xs mt-1"
+                style={{ fontFamily: "var(--font-space-mono), monospace" }}
+              >
                 {isBoardroom ? "Message all agents" : `Message ${agent?.name}`}
               </p>
             </div>
@@ -370,17 +364,19 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
 
         {(isSearching || toolStatus) && (
           <div className="flex items-center gap-2 animate-fade-in">
-            <div
-              className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0"
-              style={{ background: agent?.accent || "#48484A" }}
-            >
+            <div className="w-7 h-7 border border-white flex items-center justify-center text-white text-xs font-bold flex-shrink-0 bg-black">
               {agent?.initials ?? "?"}
             </div>
-            <div className="flex items-center gap-2 px-4 py-2.5 bg-apple-gray-50 border border-apple-gray-100 rounded-apple-2xl rounded-tl-apple-sm">
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="text-apple-gray-500 animate-spin" style={{ animationDuration: "1.5s" }}>
+            <div
+              className="flex items-center gap-2 px-4 py-2.5 bg-black border border-white"
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="text-white animate-spin" style={{ animationDuration: "1.5s" }}>
                 <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.5" strokeDasharray="14 8" />
               </svg>
-              <span className="text-xs text-apple-gray-500">
+              <span
+                className="text-xs text-white/60"
+                style={{ fontFamily: "var(--font-space-mono), monospace" }}
+              >
                 {toolStatus ?? "Searching the web..."}
               </span>
             </div>
@@ -393,7 +389,6 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
       <ChatInput onSend={sendMessage} isLoading={isLoading} agentKey={agentKey} />
 
       {upgradePrompt && (

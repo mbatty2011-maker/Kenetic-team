@@ -19,8 +19,7 @@ body {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
-    system-ui, "Segoe UI", sans-serif;
+  font-family: var(--font-space-grotesk), system-ui, "Segoe UI", sans-serif;
   background: var(--background);
   color: var(--foreground);
   -webkit-font-smoothing: antialiased;

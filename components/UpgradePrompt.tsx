@@ -17,37 +17,36 @@ interface Props {
 
 export default function UpgradePrompt({ reason, limitHit, tier, onDismiss }: Props) {
   const upgrade = UPGRADE_PATH[tier];
+  const monoStyle = { fontFamily: "var(--font-space-mono), monospace" };
 
   return (
-    <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4 animate-fade-in">
-      <div className="bg-white rounded-apple-xl shadow-apple-xl max-w-sm w-full p-6">
-        <div className="w-12 h-12 rounded-full bg-apple-gray-100 flex items-center justify-center mx-auto mb-4">
+    <div className="fixed inset-0 bg-black/80 z-50 flex items-end sm:items-center justify-center p-4 animate-fade-in">
+      <div className="bg-black border border-white max-w-sm w-full p-6">
+        <div className="w-12 h-12 border border-white flex items-center justify-center mx-auto mb-5">
           <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-            <path
-              d="M11 7v4M11 14.5h.01"
-              stroke="#8E8E93"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-            />
-            <circle cx="11" cy="11" r="9.5" stroke="#8E8E93" strokeWidth="1.6" />
+            <path d="M11 7v4M11 14.5h.01" stroke="white" strokeWidth="1.6" strokeLinecap="round" />
+            <circle cx="11" cy="11" r="9.5" stroke="white" strokeWidth="1.6" />
           </svg>
         </div>
 
-        <h2 className="text-base font-semibold text-apple-gray-950 text-center mb-1">
+        <h2
+          className="text-white text-sm font-bold uppercase tracking-widest text-center mb-1"
+          style={monoStyle}
+        >
           {reason}
         </h2>
-        <p className="text-sm text-apple-gray-500 text-center mb-1">{limitHit}</p>
+        <p className="text-white/50 text-xs text-center mb-1" style={monoStyle}>{limitHit}</p>
 
         {upgrade ? (
-          <p className="text-sm text-apple-gray-500 text-center mb-5">
+          <p className="text-white/50 text-xs text-center mb-6" style={monoStyle}>
             Upgrade to{" "}
-            <span className="font-medium text-apple-gray-700">
+            <span className="text-white font-bold">
               {upgrade.name} (${upgrade.price}/mo)
             </span>{" "}
             for {upgrade.benefit}.
           </p>
         ) : (
-          <p className="text-sm text-apple-gray-500 text-center mb-5">
+          <p className="text-white/50 text-xs text-center mb-6" style={monoStyle}>
             View your plan options to continue.
           </p>
         )}
@@ -55,13 +54,15 @@ export default function UpgradePrompt({ reason, limitHit, tier, onDismiss }: Pro
         <Link
           href="/pricing"
           onClick={onDismiss}
-          className="block w-full py-2.5 bg-apple-gray-950 text-white text-sm font-medium rounded-apple-md hover:bg-apple-gray-800 transition-colors text-center mb-2"
+          className="block w-full py-3 bg-white text-black text-xs font-bold uppercase tracking-widest hover:bg-black hover:text-white border border-white transition-colors duration-200 text-center mb-2"
+          style={monoStyle}
         >
           Upgrade Now
         </Link>
         <button
           onClick={onDismiss}
-          className="block w-full py-2.5 text-apple-gray-400 text-sm hover:text-apple-gray-600 transition-colors"
+          className="block w-full py-2.5 text-white/40 text-xs hover:text-white transition-colors"
+          style={monoStyle}
         >
           Maybe Later
         </button>
