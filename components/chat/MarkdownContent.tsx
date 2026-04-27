@@ -191,7 +191,7 @@ export default function MarkdownContent({ content }: { content: string }) {
     i++;
   }
 
-  return <div className="space-y-0.5">{elements}</div>;
+  return <div className="space-y-0.5 text-white">{elements}</div>;
 }
 
 function renderTable(rows: string[], keyBase: number): React.ReactNode {

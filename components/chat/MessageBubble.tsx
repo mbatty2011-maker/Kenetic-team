@@ -78,7 +78,7 @@ export default function MessageBubble({
           </div>
         )}
 
-        <div className="px-4 py-3 bg-black border border-white">
+        <div className="px-4 py-3 bg-black border border-white text-white">
           {message.content ? (
             <>
               <MarkdownContent content={message.content} />
