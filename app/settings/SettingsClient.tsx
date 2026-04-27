@@ -246,15 +246,12 @@ export default function SettingsPage() {
               <span className="text-sm font-medium text-apple-gray-950">{messageCount}</span>
             </div>
             <div className="px-4 py-3.5">
-              <button
-                disabled
-                className="w-full py-2.5 bg-apple-gray-100 text-apple-gray-400 text-sm font-medium rounded-apple-md cursor-not-allowed flex items-center justify-center gap-2"
+              <Link
+                href="/pricing"
+                className="block w-full py-2.5 bg-apple-gray-950 text-white text-sm font-medium rounded-apple-md hover:bg-apple-gray-800 transition-all text-center"
               >
-                Upgrade to Pro
-                <span className="text-xs bg-apple-gray-200 px-2 py-0.5 rounded-full text-apple-gray-500">
-                  Coming Soon
-                </span>
-              </button>
+                View Plans
+              </Link>
             </div>
           </div>
         </section>

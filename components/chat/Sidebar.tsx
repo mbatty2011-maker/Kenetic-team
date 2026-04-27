@@ -344,6 +344,26 @@ export default function Sidebar({
       {/* Bottom — Settings + Feedback + Sign out */}
       <div className="px-2 pb-4 pt-2 border-t border-white/8 mt-2 space-y-0.5">
         <Link
+          href="/pricing"
+          onClick={onClose}
+          className="flex items-center gap-2.5 px-2 py-2 rounded-apple-md hover:bg-white/6 transition-colors"
+        >
+          <div className="w-7 h-7 rounded-full bg-white/8 flex items-center justify-center flex-shrink-0">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path
+                d="M7 11V3M3.5 6.5L7 3L10.5 6.5"
+                stroke="white"
+                strokeWidth="1.3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeOpacity="0.6"
+              />
+            </svg>
+          </div>
+          <span className="text-white/60 text-sm">Upgrade</span>
+        </Link>
+
+        <Link
           href="/settings"
           className="flex items-center gap-2.5 px-2 py-2 rounded-apple-md hover:bg-white/6 transition-colors"
         >

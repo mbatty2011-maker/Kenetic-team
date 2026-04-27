@@ -21,7 +21,8 @@
     "pdf-lib": "^1.17.1",
     "react": "^18",
     "react-dom": "^18",
-    "ssh2": "^1.17.0"
+    "ssh2": "^1.17.0",
+    "stripe": "^22.1.0"
   },
   "devDependencies": {
     "@types/node": "^20",
