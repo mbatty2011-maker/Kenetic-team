@@ -359,7 +359,7 @@ export async function executeAgentTool(
       }
 
       case "send_email": {
-        const to = (input.to as string) || (process.env.GMAIL_FROM_ADDRESS ?? "");
+        const to = (input.to as string) || "";
         if (!to.trim()) throw new Error("Email recipient address is missing");
         await sendEmail({
           to,
@@ -370,14 +370,14 @@ export async function executeAgentTool(
       }
 
       case "draft_email": {
-        const to = (input.to as string) || (process.env.GMAIL_FROM_ADDRESS ?? "");
+        const to = (input.to as string) || "";
         if (!to.trim()) throw new Error("Email recipient address is missing");
         await draftEmail({
           to,
           subject: input.subject as string,
           body: input.body as string,
         });
-        return `Draft created in Gmail — subject: "${input.subject}". The user can review and send it from their inbox.`;
+        return `Email sent to ${to} — subject: "${input.subject}".
       }
 
       case "append_to_knowledge_base": {
