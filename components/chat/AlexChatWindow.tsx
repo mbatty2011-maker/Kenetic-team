@@ -171,6 +171,7 @@ export default function AlexChatWindow() {
   // ── Load conversation + resume any active jobs on mount/nav ────────────────
   useEffect(() => {
     const cid = searchParams.get("cid");
+    const autostart = searchParams.get("autostart") === "1";
 
     // Unsubscribe from all existing channels when conversation changes
     channelsRef.current.forEach((ch) => supabase.removeChannel(ch));
@@ -178,7 +179,13 @@ export default function AlexChatWindow() {
 
     if (cid) {
       setConversationId(cid);
-      loadMessages(cid);
+      loadMessages(cid).then((msgs) => {
+        // autostart=1 means onboarding just saved a user message — trigger Alex if he hasn't replied yet
+        if (autostart && !msgs.some((m) => m.role === "assistant")) {
+          const lastUserMsg = [...msgs].reverse().find((m) => m.role === "user");
+          if (lastUserMsg) triggerAlex(lastUserMsg.content, cid);
+        }
+      });
       resumeActiveJobs();
     } else {
       setMessages([]);
@@ -204,13 +211,65 @@ export default function AlexChatWindow() {
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
-  async function loadMessages(cid: string) {
+  async function loadMessages(cid: string): Promise<Message[]> {
     const { data } = await supabase
       .from("messages")
       .select("*")
       .eq("conversation_id", cid)
       .order("created_at", { ascending: true });
-    if (data && searchParams.get("cid") === cid) setMessages(data as Message[]);
+    const msgs = (data as Message[]) ?? [];
+    if (searchParams.get("cid") === cid) setMessages(msgs);
+    return msgs;
+  }
+
+  // Trigger Alex on an already-saved user message (used by autostart).
+  // Does NOT insert a user message — that was already done by the caller.
+  async function triggerAlex(content: string, cid: string) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // Strip autostart from the URL without triggering a re-render/re-effect
+    window.history.replaceState(null, "", `/chat/alex?cid=${cid}`);
+
+    setIsLoading(true);
+    try {
+      const res = await fetch("/api/alex/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: content, conversationId: cid }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: data.error ?? "Failed to start — please try again.",
+            agent_key: "alex",
+            created_at: new Date().toISOString(),
+          },
+        ]);
+        setIsLoading(false);
+        return;
+      }
+      const { jobId } = data as { jobId: string };
+      const newJob: AlexJob = { id: jobId, status: "queued", prompt: content, steps: [], result: null, error: null };
+      setActiveJobs((prev) => new Map(prev).set(jobId, newJob));
+      subscribeToJob(jobId, user.id);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: "Something went wrong. Please try again.",
+          agent_key: "alex",
+          created_at: new Date().toISOString(),
+        },
+      ]);
+      setIsLoading(false);
+    }
   }
 
   // On page load, check for any queued/running jobs for this user and re-subscribe.
