@@ -13,6 +13,13 @@ interface Profile {
   user_context: string;
 }
 
+interface KnowledgeBaseEntry {
+  id: string;
+  section_title: string;
+  content: string;
+  created_at: string;
+}
+
 export default function SettingsPage() {
   const router = useRouter();
   const supabase = createClient();
@@ -28,6 +35,7 @@ export default function SettingsPage() {
   const [messageCount, setMessageCount] = useState(0);
   const [toast, setToast] = useState("");
   const [showFeedback, setShowFeedback] = useState(false);
+  const [kbEntries, setKbEntries] = useState<KnowledgeBaseEntry[]>([]);
 
   useEffect(() => {
     loadProfile();
@@ -66,6 +74,13 @@ export default function SettingsPage() {
       .gte("created_at", startOfMonth.toISOString());
 
     setMessageCount(count ?? 0);
+
+    const { data: kbData } = await supabase
+      .from("knowledge_base")
+      .select("id, section_title, content, created_at")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: true });
+    setKbEntries((kbData as KnowledgeBaseEntry[]) ?? []);
   }
 
   async function saveProfile() {
@@ -95,6 +110,19 @@ export default function SettingsPage() {
   async function handleSignOut() {
     await supabase.auth.signOut();
     router.push("/login");
+  }
+
+  async function deleteKbEntry(id: string) {
+    setKbEntries((prev) => prev.filter((e) => e.id !== id));
+    await supabase.from("knowledge_base").delete().eq("id", id);
+  }
+
+  async function clearKnowledgeBase() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    setKbEntries([]);
+    await supabase.from("knowledge_base").delete().eq("user_id", user.id);
+    showToast("Knowledge base cleared");
   }
 
   function showToast(msg: string) {
@@ -203,6 +231,59 @@ export default function SettingsPage() {
                 {saved ? "Saved ✓" : saving ? "Saving..." : "Save"}
               </button>
             </div>
+          </div>
+        </section>
+
+        {/* Knowledge Base */}
+        <section>
+          <h2 className="text-white/40 text-xs font-bold uppercase tracking-widest px-1 mb-1" style={monoStyle}>
+            Knowledge Base
+          </h2>
+          <p className="text-white/30 text-xs px-1 mb-3" style={monoStyle}>
+            Sections your agents have saved from research and conversations.
+          </p>
+          <div className="border border-white">
+            {kbEntries.length === 0 ? (
+              <div className="px-4 py-6 text-center">
+                <p className="text-white/30 text-xs" style={monoStyle}>
+                  No entries yet. Agents will save research and key findings here automatically.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="divide-y divide-white/10">
+                  {kbEntries.map((entry) => (
+                    <div key={entry.id} className="px-4 py-3 flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white/50 text-xs uppercase tracking-widest mb-1" style={monoStyle}>
+                          {entry.section_title}
+                        </p>
+                        <p className="text-white text-xs leading-relaxed line-clamp-2" style={monoStyle}>
+                          {entry.content}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => deleteKbEntry(entry.id)}
+                        className="text-white/30 hover:text-red-400 transition-colors flex-shrink-0 pt-0.5"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                          <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="px-4 py-3 border-t border-white/10">
+                  <button
+                    onClick={clearKnowledgeBase}
+                    className="text-xs text-red-400 hover:text-red-300 transition-colors uppercase tracking-widest"
+                    style={monoStyle}
+                  >
+                    Clear All
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </section>
 
