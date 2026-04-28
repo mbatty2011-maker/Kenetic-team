@@ -42,6 +42,20 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Require onboarding before accessing any chat page
+  if (user && pathname.startsWith("/chat")) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("onboarding_complete")
+      .eq("id", user.id)
+      .single();
+    if (!profile?.onboarding_complete) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/onboarding";
+      return NextResponse.redirect(url);
+    }
+  }
+
   if (!user && !isPublicPath) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";

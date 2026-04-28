@@ -36,6 +36,7 @@ export default function SettingsPage() {
   const [toast, setToast] = useState("");
   const [showFeedback, setShowFeedback] = useState(false);
   const [kbEntries, setKbEntries] = useState<KnowledgeBaseEntry[]>([]);
+  const [deleteState, setDeleteState] = useState<"idle" | "confirm" | "deleting">("idle");
 
   useEffect(() => {
     loadProfile();
@@ -110,6 +111,23 @@ export default function SettingsPage() {
   async function handleSignOut() {
     await supabase.auth.signOut();
     router.push("/login");
+  }
+
+  async function handleDeleteAccount() {
+    setDeleteState("deleting");
+    try {
+      const res = await fetch("/api/account/delete", { method: "DELETE" });
+      if (!res.ok) {
+        const { error } = await res.json();
+        throw new Error(error ?? "Failed to delete account");
+      }
+      await supabase.auth.signOut();
+      router.push("/login");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Something went wrong";
+      showToast(msg);
+      setDeleteState("idle");
+    }
   }
 
   async function deleteKbEntry(id: string) {
@@ -372,6 +390,45 @@ export default function SettingsPage() {
                 <path d="M6 3H4a1 1 0 00-1 1v8a1 1 0 001 1h2M11 11l3-3-3-3M14 8H6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>
+            {deleteState === "idle" && (
+              <button
+                onClick={() => setDeleteState("confirm")}
+                className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-red-950/20 transition-colors text-left"
+              >
+                <span className="text-red-400/60 text-sm">Delete Account</span>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-red-400/60">
+                  <path d="M2 4h12M5 4V3a1 1 0 011-1h4a1 1 0 011 1v1M6 7v5M10 7v5M3 4l1 9a1 1 0 001 1h6a1 1 0 001-1l1-9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            )}
+            {deleteState === "confirm" && (
+              <div className="px-4 py-4 space-y-3">
+                <p className="text-white/50 text-xs leading-relaxed" style={monoStyle}>
+                  This will permanently delete your account and all data — conversations, messages, and settings. This cannot be undone.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleDeleteAccount}
+                    className="px-4 py-2 bg-red-600 text-white text-xs font-bold uppercase tracking-widest hover:bg-red-700 transition-colors border border-red-600"
+                    style={monoStyle}
+                  >
+                    Delete Forever
+                  </button>
+                  <button
+                    onClick={() => setDeleteState("idle")}
+                    className="px-4 py-2 text-white/60 text-xs font-bold uppercase tracking-widest hover:text-white border border-white/20 hover:border-white transition-colors"
+                    style={monoStyle}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+            {deleteState === "deleting" && (
+              <div className="px-4 py-3.5">
+                <span className="text-white/30 text-xs" style={monoStyle}>Deleting account…</span>
+              </div>
+            )}
           </div>
         </section>
       </div>
