@@ -91,10 +91,16 @@ export default function SignupPage() {
               {email}
             </p>
             <p
-              className="text-white/40 text-xs mb-6"
+              className="text-white/40 text-xs mb-2"
               style={{ fontFamily: "var(--font-space-mono), monospace" }}
             >
               Click the link to activate your account, then come back to sign in.
+            </p>
+            <p
+              className="text-white/40 text-xs mb-6"
+              style={{ fontFamily: "var(--font-space-mono), monospace" }}
+            >
+              Don't see it? Check your spam folder.
             </p>
             <button
               onClick={handleResend}
