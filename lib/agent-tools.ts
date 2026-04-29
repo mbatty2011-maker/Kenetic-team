@@ -377,7 +377,7 @@ export async function executeAgentTool(
           subject: input.subject as string,
           body: input.body as string,
         });
-        return `Email sent to ${to} — subject: "${input.subject}".
+        return `Email sent to ${to} — subject: "${input.subject}".`;
       }
 
       case "append_to_knowledge_base": {
