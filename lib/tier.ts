@@ -32,7 +32,7 @@ function priceIdToTier(priceId: string): Tier {
 }
 
 export async function getUserTier(supabase: SupabaseClient, userId: string): Promise<Tier> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("subscriptions")
     .select("status, price_id")
     .eq("user_id", userId)
@@ -40,6 +40,17 @@ export async function getUserTier(supabase: SupabaseClient, userId: string): Pro
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+
+  if (error) {
+    // Silently swallowing this would treat every paying user as "free" if the
+    // table is missing or RLS rejects the query — surface it loudly in logs.
+    console.error("[getUserTier] subscriptions query failed", {
+      userId,
+      code: error.code,
+      message: error.message,
+    });
+    return "free";
+  }
 
   if (!data?.price_id) return "free";
   return priceIdToTier(data.price_id);

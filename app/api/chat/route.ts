@@ -168,8 +168,18 @@ Keep it to 3–4 sentences. Warm, sharp, no fluff. No lists or headers — just 
 
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (data: object | string) =>
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+      const send = (data: object | string) => {
+        try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`)); } catch {}
+      };
+      // SSE comment lines (`: ...`) are ignored by the EventSource/reader but
+      // keep the underlying TCP connection alive. iOS Safari and some mobile
+      // proxies kill fetch streams that go idle for ~30s; tool calls
+      // (file generation, Supabase upload, signed URL, follow-up Anthropic
+      // round-trip) routinely exceed that — sending a heartbeat every 10s
+      // prevents "Load failed" mid-tool.
+      const sendHeartbeat = () => {
+        try { controller.enqueue(encoder.encode(`: ping\n\n`)); } catch {}
+      };
 
       try {
         const currentMessages = [...initialMessages];
@@ -204,8 +214,13 @@ Keep it to 3–4 sentences. Warm, sharp, no fluff. No lists or headers — just 
           const toolResults: Anthropic.ToolResultBlockParam[] = [];
           for (const tu of toolUses) {
             send({ type: "tool_running", tool: tu.name, label: TOOL_LABELS[tu.name] ?? tu.name });
-            const result = await executeAgentTool(tu.name, tu.input as Record<string, unknown>, { supabase, userId: user.id });
-            toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: result });
+            const heartbeat = setInterval(sendHeartbeat, 10000);
+            try {
+              const result = await executeAgentTool(tu.name, tu.input as Record<string, unknown>, { supabase, userId: user.id });
+              toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: result });
+            } finally {
+              clearInterval(heartbeat);
+            }
           }
 
           currentMessages.push({ role: "user", content: toolResults });
@@ -231,6 +246,12 @@ Keep it to 3–4 sentences. Warm, sharp, no fluff. No lists or headers — just 
   });
 
   return new Response(stream, {
-    headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      // Disable proxy buffering so SSE chunks reach the client immediately.
+      "X-Accel-Buffering": "no",
+    },
   });
 }

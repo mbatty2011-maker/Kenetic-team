@@ -12,11 +12,37 @@ async function upsertSubscription(
 ) {
   // current_period_start/end live on items in the 2026-04-22 API
   const item = subscription.items.data[0];
-  await supabase.from("subscriptions").upsert(
+
+  // Resolve user_id: prefer caller-supplied, then the existing row, then any
+  // row for the same Stripe customer. Without this, customer.subscription.*
+  // events (which carry no user_id) would overwrite a previously-set user_id
+  // to NULL on every update and silently drop the user back to the free tier.
+  let resolvedUserId: string | null = userId ?? null;
+  if (!resolvedUserId) {
+    const { data: existing } = await supabase
+      .from("subscriptions")
+      .select("user_id")
+      .eq("stripe_subscription_id", subscription.id)
+      .maybeSingle();
+    resolvedUserId = (existing?.user_id as string | null) ?? null;
+  }
+  if (!resolvedUserId) {
+    const { data: byCustomer } = await supabase
+      .from("subscriptions")
+      .select("user_id")
+      .eq("stripe_customer_id", subscription.customer as string)
+      .not("user_id", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    resolvedUserId = (byCustomer?.user_id as string | null) ?? null;
+  }
+
+  const { error } = await supabase.from("subscriptions").upsert(
     {
       stripe_subscription_id: subscription.id,
       stripe_customer_id:     subscription.customer as string,
-      user_id:                userId ?? null,
+      user_id:                resolvedUserId,
       status:                 subscription.status,
       price_id:               item?.price.id ?? null,
       current_period_start:   item ? new Date(item.current_period_start * 1000).toISOString() : null,
@@ -26,6 +52,12 @@ async function upsertSubscription(
     },
     { onConflict: "stripe_subscription_id" }
   );
+  if (error) {
+    console.error("[stripe-webhook] upsertSubscription failed", {
+      stripeSubscriptionId: subscription.id,
+      message: error.message,
+    });
+  }
 }
 
 export async function POST(req: NextRequest) {
