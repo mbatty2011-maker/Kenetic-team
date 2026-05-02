@@ -201,7 +201,7 @@ export function createAgentWorker(agentKey: WorkerAgentKey) {
             const toolResult = await executeAgentTool(
               tu.name,
               input,
-              { supabase: supabase as unknown as SupabaseClient, userId }
+              { supabase: supabase as unknown as SupabaseClient, userId, agent: agentKey, conversationId, jobId }
             );
             toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: toolResult });
           }

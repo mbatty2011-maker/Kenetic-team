@@ -5,6 +5,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createServerClient } from "@supabase/ssr";
 import { Sandbox } from "@e2b/desktop";
 import { createDesktop, takeScreenshot, executeComputerAction } from "@/lib/tools/desktopSandbox";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { logActivity } from "@/lib/tools/activity-log";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -105,6 +107,12 @@ export async function POST(request: NextRequest) {
 
   const sessionId = crypto.randomUUID();
   const encoder = new TextEncoder();
+  const adminClient = createAdminClient();
+  const activityCtx = {
+    supabase: adminClient,
+    userId: user.id,
+    agent: "computer" as const,
+  };
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -144,7 +152,15 @@ export async function POST(request: NextRequest) {
           ],
         });
 
+        // Hard wall: bail out 60s before Vercel's 300s maxDuration so we send a
+        // clean `done` event instead of getting killed mid-turn.
+        const loopDeadline = Date.now() + 240_000;
+
         for (let i = 0; i < MAX_ITERATIONS; i++) {
+          if (Date.now() > loopDeadline) {
+            send({ type: "done", result: "Reached time limit before completing the task." });
+            break;
+          }
           const response = await anthropic.messages.create({
             model: "claude-sonnet-4-6",
             max_tokens: 512,
@@ -191,6 +207,12 @@ export async function POST(request: NextRequest) {
           }
 
           send({ type: "action", ...parsed });
+          void logActivity({
+            ctx: activityCtx,
+            toolName: parsed.action,
+            status: "succeeded",
+            input: parsed,
+          });
 
           let nextShot: string;
 

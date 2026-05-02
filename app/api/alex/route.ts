@@ -144,7 +144,7 @@ export async function POST(req: NextRequest) {
               const toolResults: Anthropic.ToolResultBlockParam[] = [];
               for (const tu of toolUses) {
                 send({ type: "tool_running", tool: tu.name, label: TOOL_LABELS[tu.name] ?? tu.name });
-                const result = await executeAgentTool(tu.name, tu.input as Record<string, unknown>, { supabase, userId: user.id });
+                const result = await executeAgentTool(tu.name, tu.input as Record<string, unknown>, { supabase, userId: user.id, agent: "alex", conversationId });
                 toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: result });
               }
 
@@ -240,7 +240,7 @@ Provide your specialist perspective. Be specific, actionable, and concise. Stay 
                 tools,
                 anthropic,
                 1024,
-                { supabase, userId: user.id }
+                { supabase, userId: user.id, agent: agentKey as "jeremy" | "kai" | "dana" | "marcus" | "maya", conversationId }
               );
               agentResponses[agentKey] = content;
             } catch {

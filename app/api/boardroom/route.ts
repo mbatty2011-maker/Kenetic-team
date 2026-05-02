@@ -129,7 +129,7 @@ BOARDROOM RULE: Use your tools directly — no permission needed. Produce concre
                 AGENT_TOOLS[agentKey] ?? [],
                 anthropic,
                 2048,
-                { supabase, userId }
+                { supabase, userId, agent: agentKey as "jeremy" | "kai" | "dana" | "marcus" | "maya", conversationId }
               );
             } catch (err) {
               console.error(`[boardroom] ${agentKey} error:`, err);

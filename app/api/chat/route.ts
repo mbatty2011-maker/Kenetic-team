@@ -216,7 +216,7 @@ Keep it to 3–4 sentences. Warm, sharp, no fluff. No lists or headers — just 
             send({ type: "tool_running", tool: tu.name, label: TOOL_LABELS[tu.name] ?? tu.name });
             const heartbeat = setInterval(sendHeartbeat, 10000);
             try {
-              const result = await executeAgentTool(tu.name, tu.input as Record<string, unknown>, { supabase, userId: user.id });
+              const result = await executeAgentTool(tu.name, tu.input as Record<string, unknown>, { supabase, userId: user.id, agent: agentKey as "alex" | "jeremy" | "kai" | "dana" | "marcus" | "maya", conversationId });
               toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: result });
             } finally {
               clearInterval(heartbeat);

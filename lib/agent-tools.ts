@@ -8,8 +8,17 @@ import { executeCode } from "./tools/codeExecution";
 import type { DocumentSection, XlsxSheet } from "./files/types";
 import { uploadAgentFile, sanitizeFilename } from "./files/upload";
 import { getUserTier } from "./tier";
+import { logActivity, type AgentName, type ActivityContext } from "./tools/activity-log";
+import * as gmail from "./tools/gmail";
+import * as calendar from "./tools/calendar";
 
-export type ToolContext = { supabase: SupabaseClient; userId: string };
+export type ToolContext = {
+  supabase: SupabaseClient;
+  userId: string;
+  agent?: AgentName;
+  conversationId?: string;
+  jobId?: string;
+};
 
 // ─── Tool definitions ────────────────────────────────────────────────────────
 
@@ -199,28 +208,306 @@ const RUN_SSH: Anthropic.Tool = {
   },
 };
 
+// ─── Gmail tools ─────────────────────────────────────────────────────────────
+
+const GMAIL_SEARCH_THREADS: Anthropic.Tool = {
+  name: "gmail_search_threads",
+  description:
+    "Search the user's Gmail using Gmail query syntax (e.g. `from:stripe newer_than:7d`). Returns recent matching threads with id, subject, from, and snippet. Read-only.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      query: { type: "string", description: "Gmail search query" },
+      max_results: { type: "integer", description: "Max threads to return (default 10, max 50)" },
+    },
+    required: ["query"],
+  },
+};
+
+const GMAIL_GET_THREAD: Anthropic.Tool = {
+  name: "gmail_get_thread",
+  description:
+    "Fetch the full text/plain content of every message in a Gmail thread. Use after gmail_search_threads when you need the actual email body. Read-only.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      thread_id: { type: "string", description: "Gmail thread id" },
+    },
+    required: ["thread_id"],
+  },
+};
+
+const GMAIL_CREATE_DRAFT: Anthropic.Tool = {
+  name: "gmail_create_draft",
+  description:
+    "Create a Gmail draft. The user reviews and sends it themselves — never sends directly. Use this for any email composed in the user's Gmail. Optionally attach to an existing thread to make the draft a reply.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      to: { type: "string", description: "Recipient email address" },
+      subject: { type: "string" },
+      body: { type: "string", description: "Plain-text body" },
+      thread_id: { type: "string", description: "Optional Gmail thread id to reply within" },
+    },
+    required: ["to", "subject", "body"],
+  },
+};
+
+const GMAIL_LIST_DRAFTS: Anthropic.Tool = {
+  name: "gmail_list_drafts",
+  description: "List the user's existing Gmail drafts (id, subject, snippet). Read-only.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      max_results: { type: "integer", description: "Max drafts to return (default 20, max 50)" },
+    },
+  },
+};
+
+const GMAIL_LIST_LABELS: Anthropic.Tool = {
+  name: "gmail_list_labels",
+  description: "List all Gmail labels the user has (system + user labels). Use to find label ids before applying them.",
+  input_schema: { type: "object" as const, properties: {} },
+};
+
+const GMAIL_CREATE_LABEL: Anthropic.Tool = {
+  name: "gmail_create_label",
+  description: "Create a new Gmail label. Returns the new label's id and name.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      name: { type: "string", description: "Display name for the label" },
+    },
+    required: ["name"],
+  },
+};
+
+const GMAIL_LABEL_MESSAGE: Anthropic.Tool = {
+  name: "gmail_label_message",
+  description:
+    "Apply (and optionally remove) labels on a single Gmail message. Confirm with the user first if removing labels like INBOX or applying TRASH.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      message_id: { type: "string" },
+      add_label_ids: { type: "array", items: { type: "string" } },
+      remove_label_ids: { type: "array", items: { type: "string" } },
+    },
+    required: ["message_id", "add_label_ids"],
+  },
+};
+
+const GMAIL_UNLABEL_MESSAGE: Anthropic.Tool = {
+  name: "gmail_unlabel_message",
+  description: "Remove labels from a single Gmail message.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      message_id: { type: "string" },
+      label_ids: { type: "array", items: { type: "string" } },
+    },
+    required: ["message_id", "label_ids"],
+  },
+};
+
+const GMAIL_LABEL_THREAD: Anthropic.Tool = {
+  name: "gmail_label_thread",
+  description:
+    "Apply (and optionally remove) labels on every message in a Gmail thread. Confirm with the user first if applying TRASH or removing INBOX.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      thread_id: { type: "string" },
+      add_label_ids: { type: "array", items: { type: "string" } },
+      remove_label_ids: { type: "array", items: { type: "string" } },
+    },
+    required: ["thread_id", "add_label_ids"],
+  },
+};
+
+const GMAIL_UNLABEL_THREAD: Anthropic.Tool = {
+  name: "gmail_unlabel_thread",
+  description: "Remove labels from every message in a Gmail thread.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      thread_id: { type: "string" },
+      label_ids: { type: "array", items: { type: "string" } },
+    },
+    required: ["thread_id", "label_ids"],
+  },
+};
+
+const GMAIL_TOOLS = [
+  GMAIL_SEARCH_THREADS,
+  GMAIL_GET_THREAD,
+  GMAIL_CREATE_DRAFT,
+  GMAIL_LIST_DRAFTS,
+  GMAIL_LIST_LABELS,
+  GMAIL_CREATE_LABEL,
+  GMAIL_LABEL_MESSAGE,
+  GMAIL_UNLABEL_MESSAGE,
+  GMAIL_LABEL_THREAD,
+  GMAIL_UNLABEL_THREAD,
+];
+
+// ─── Calendar tools ──────────────────────────────────────────────────────────
+
+const CALENDAR_LIST_CALENDARS: Anthropic.Tool = {
+  name: "calendar_list_calendars",
+  description: "List all calendars the user has access to. Use to find non-primary calendar ids.",
+  input_schema: { type: "object" as const, properties: {} },
+};
+
+const CALENDAR_LIST_EVENTS: Anthropic.Tool = {
+  name: "calendar_list_events",
+  description:
+    "List events from a calendar within a time range. Defaults to the primary calendar. timeMin/timeMax are RFC3339 timestamps.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      calendar_id: { type: "string", description: "Calendar id (default 'primary')" },
+      time_min: { type: "string", description: "RFC3339 lower bound, e.g. 2026-05-02T00:00:00Z" },
+      time_max: { type: "string", description: "RFC3339 upper bound" },
+      q: { type: "string", description: "Free-text search across event fields" },
+      max_results: { type: "integer", description: "Default 25, max 100" },
+    },
+  },
+};
+
+const CALENDAR_GET_EVENT: Anthropic.Tool = {
+  name: "calendar_get_event",
+  description: "Fetch a single calendar event in full.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      calendar_id: { type: "string" },
+      event_id: { type: "string" },
+    },
+    required: ["calendar_id", "event_id"],
+  },
+};
+
+const CALENDAR_CREATE_EVENT: Anthropic.Tool = {
+  name: "calendar_create_event",
+  description:
+    "Create a calendar event. start/end are objects: either { dateTime, timeZone } for timed events or { date } for all-day. Attendees auto-receive invites.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      calendar_id: { type: "string", description: "Calendar id (default 'primary')" },
+      summary: { type: "string", description: "Event title" },
+      description: { type: "string" },
+      location: { type: "string" },
+      start: {
+        type: "object" as const,
+        description: "{ dateTime: ISO, timeZone: 'America/New_York' } OR { date: 'YYYY-MM-DD' }",
+      },
+      end: {
+        type: "object" as const,
+        description: "Same shape as start",
+      },
+      attendees: {
+        type: "array",
+        items: { type: "object" as const, properties: { email: { type: "string" } }, required: ["email"] },
+      },
+    },
+    required: ["summary", "start", "end"],
+  },
+};
+
+const CALENDAR_UPDATE_EVENT: Anthropic.Tool = {
+  name: "calendar_update_event",
+  description: "Patch fields on an existing calendar event. Only the fields you provide are updated.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      calendar_id: { type: "string" },
+      event_id: { type: "string" },
+      patch: { type: "object" as const, description: "Partial event fields to update (summary, start, end, attendees, etc.)" },
+    },
+    required: ["calendar_id", "event_id", "patch"],
+  },
+};
+
+const CALENDAR_DELETE_EVENT: Anthropic.Tool = {
+  name: "calendar_delete_event",
+  description: "Delete a calendar event. Confirm with the user first — this is irreversible and notifies attendees.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      calendar_id: { type: "string" },
+      event_id: { type: "string" },
+    },
+    required: ["calendar_id", "event_id"],
+  },
+};
+
+const CALENDAR_RESPOND_TO_EVENT: Anthropic.Tool = {
+  name: "calendar_respond_to_event",
+  description: "RSVP to a calendar event you're invited to. Updates the user's attendee responseStatus.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      calendar_id: { type: "string" },
+      event_id: { type: "string" },
+      response: { type: "string", enum: ["accepted", "declined", "tentative"] },
+    },
+    required: ["calendar_id", "event_id", "response"],
+  },
+};
+
+const CALENDAR_SUGGEST_TIME: Anthropic.Tool = {
+  name: "calendar_suggest_time",
+  description:
+    "Find up to 5 free meeting slots that work for everyone in `attendees` within the next `within_days` days, during business hours (9–17). Returns ISO start/end pairs.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      duration_minutes: { type: "integer" },
+      attendees: { type: "array", items: { type: "string" }, description: "Email addresses" },
+      within_days: { type: "integer", description: "Search window (default 7, max 30)" },
+    },
+    required: ["duration_minutes", "attendees"],
+  },
+};
+
+const CALENDAR_TOOLS = [
+  CALENDAR_LIST_CALENDARS,
+  CALENDAR_LIST_EVENTS,
+  CALENDAR_GET_EVENT,
+  CALENDAR_CREATE_EVENT,
+  CALENDAR_UPDATE_EVENT,
+  CALENDAR_DELETE_EVENT,
+  CALENDAR_RESPOND_TO_EVENT,
+  CALENDAR_SUGGEST_TIME,
+];
+
 // ─── Per-agent tool sets ─────────────────────────────────────────────────────
 
 const ALL_TOOLS = [CREATE_FILE, WEB_SEARCH, SEND_EMAIL, DRAFT_EMAIL, APPEND_TO_KB, GET_AGENT_OUTPUT];
 
 const MAYA_TOOLS = [CREATE_FILE, WEB_SEARCH, APPEND_TO_KB, GET_AGENT_OUTPUT];
 
-// AGENT_TOOLS: used in /api/chat — all agents get all tools; Kai also gets propose_ssh + execute_code + computer use
+const ALEX_TOOLS = [...ALL_TOOLS, ...GMAIL_TOOLS, ...CALENDAR_TOOLS];
+const DANA_TOOLS = [...ALL_TOOLS, ...GMAIL_TOOLS];
+
+// AGENT_TOOLS: used in /api/chat — Alex gets Gmail+Calendar; Dana gets Gmail; Kai also gets propose_ssh + execute_code
 export const AGENT_TOOLS: Partial<Record<AgentKey, Anthropic.Tool[]>> = {
-  alex:   ALL_TOOLS,
+  alex:   ALEX_TOOLS,
   jeremy: ALL_TOOLS,
   kai:    [...ALL_TOOLS, PROPOSE_SSH, EXECUTE_CODE],
-  dana:   ALL_TOOLS,
+  dana:   DANA_TOOLS,
   marcus: ALL_TOOLS,
   maya:   MAYA_TOOLS,
 };
 
 // TASK_AGENT_TOOLS: used in /api/task — same but Kai gets run_ssh instead of propose_ssh
 export const TASK_AGENT_TOOLS: Partial<Record<AgentKey, Anthropic.Tool[]>> = {
-  alex:   ALL_TOOLS,
+  alex:   ALEX_TOOLS,
   jeremy: ALL_TOOLS,
   kai:    [...ALL_TOOLS, RUN_SSH, EXECUTE_CODE],
-  dana:   ALL_TOOLS,
+  dana:   DANA_TOOLS,
   marcus: ALL_TOOLS,
   maya:   MAYA_TOOLS,
 };
@@ -236,6 +523,24 @@ export const TOOL_LABELS: Record<string, string> = {
   propose_ssh_command:      "Proposing Pi command...",
   run_ssh_command:          "Running command on Pi...",
   execute_code:             "Running code...",
+  gmail_search_threads:     "Searching Gmail...",
+  gmail_get_thread:         "Reading Gmail thread...",
+  gmail_create_draft:       "Creating Gmail draft...",
+  gmail_list_drafts:        "Loading drafts...",
+  gmail_list_labels:        "Loading labels...",
+  gmail_create_label:       "Creating label...",
+  gmail_label_message:      "Labeling message...",
+  gmail_unlabel_message:    "Unlabeling message...",
+  gmail_label_thread:       "Labeling thread...",
+  gmail_unlabel_thread:     "Unlabeling thread...",
+  calendar_list_calendars:  "Loading calendars...",
+  calendar_list_events:     "Reading calendar...",
+  calendar_get_event:       "Reading event...",
+  calendar_create_event:    "Creating event...",
+  calendar_update_event:    "Updating event...",
+  calendar_delete_event:    "Deleting event...",
+  calendar_respond_to_event: "Responding to invite...",
+  calendar_suggest_time:    "Finding free time...",
 };
 
 // ─── Content-to-text helpers (used so file content is saved in result) ───────
@@ -278,8 +583,45 @@ export async function executeAgentTool(
   input: Record<string, unknown>,
   context: ToolContext
 ): Promise<string> {
+  const activityCtx: ActivityContext = {
+    supabase: context.supabase,
+    userId: context.userId,
+    agent: context.agent ?? "alex",
+    conversationId: context.conversationId,
+    jobId: context.jobId,
+  };
+  const startedAt = Date.now();
   try {
-    switch (name) {
+    const result = await runAgentTool(name, input, context);
+    void logActivity({
+      ctx: activityCtx,
+      toolName: name,
+      status: "succeeded",
+      input,
+      output: result,
+      durationMs: Date.now() - startedAt,
+    });
+    return result;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    void logActivity({
+      ctx: activityCtx,
+      toolName: name,
+      status: "failed",
+      input,
+      error: message,
+      durationMs: Date.now() - startedAt,
+    });
+    return `Tool error (${name}): ${message}`;
+  }
+}
+
+async function runAgentTool(
+  name: string,
+  input: Record<string, unknown>,
+  context: ToolContext
+): Promise<string> {
+  switch (name) {
       case "create_file": {
         // File generation is gated to paid plans
         const fileTier = await getUserTier(context.supabase, context.userId);
@@ -462,11 +804,200 @@ export async function executeAgentTool(
         return sections.join("\n\n===\n\n");
       }
 
-      default:
-        return `Unknown tool: ${name}`;
-    }
-  } catch (err) {
-    return `Tool error (${name}): ${err instanceof Error ? err.message : String(err)}`;
+      // ─── Gmail ─────────────────────────────────────────────────────────
+      case "gmail_search_threads": {
+        const query = (input.query as string)?.trim();
+        if (!query) return "TOOL_ERROR: query is required. STOP.";
+        const max = Number(input.max_results ?? 10);
+        const results = await gmail.searchThreads(query, max);
+        if (results.length === 0) return "No matching Gmail threads.";
+        return results.map((r, i) =>
+          `[${i + 1}] thread_id=${r.id} | from: ${r.from} | subject: ${r.subject}\nsnippet: ${r.snippet}`
+        ).join("\n\n");
+      }
+
+      case "gmail_get_thread": {
+        const threadId = (input.thread_id as string)?.trim();
+        if (!threadId) return "TOOL_ERROR: thread_id is required. STOP.";
+        const thread = await gmail.getThread(threadId);
+        return thread.messages.map((m, i) =>
+          `[Message ${i + 1}] id=${m.id}\nFrom: ${m.from}\nTo: ${m.to}\nDate: ${m.date}\nSubject: ${m.subject}\n\n${m.body}`
+        ).join("\n\n---\n\n") || "(empty thread)";
+      }
+
+      case "gmail_create_draft": {
+        const to = (input.to as string)?.trim();
+        const subject = (input.subject as string) ?? "";
+        const body = (input.body as string) ?? "";
+        if (!to) return "TOOL_ERROR: to is required. STOP.";
+        const draft = await gmail.createDraft({
+          to,
+          subject,
+          body,
+          threadId: input.thread_id as string | undefined,
+        });
+        return `Gmail draft created. id=${draft.id} threadId=${draft.threadId}. The draft is in the user's Gmail Drafts folder — they review and send.`;
+      }
+
+      case "gmail_list_drafts": {
+        const max = Number(input.max_results ?? 20);
+        const drafts = await gmail.listDrafts(max);
+        if (drafts.length === 0) return "No drafts.";
+        return drafts.map((d, i) =>
+          `[${i + 1}] id=${d.id} subject="${d.subject}"\nsnippet: ${d.snippet}`
+        ).join("\n\n");
+      }
+
+      case "gmail_list_labels": {
+        const labels = await gmail.listLabels();
+        if (labels.length === 0) return "No labels.";
+        return labels.map((l) => `${l.id} — ${l.name} (${l.type})`).join("\n");
+      }
+
+      case "gmail_create_label": {
+        const labelName = (input.name as string)?.trim();
+        if (!labelName) return "TOOL_ERROR: name is required. STOP.";
+        const created = await gmail.createLabel(labelName);
+        return `Label created. id=${created.id} name="${created.name}".`;
+      }
+
+      case "gmail_label_message": {
+        const messageId = (input.message_id as string)?.trim();
+        const addLabelIds = (input.add_label_ids as string[]) ?? [];
+        const removeLabelIds = (input.remove_label_ids as string[]) ?? [];
+        if (!messageId) return "TOOL_ERROR: message_id is required. STOP.";
+        if (addLabelIds.length === 0 && removeLabelIds.length === 0) {
+          return "TOOL_ERROR: provide at least one label id to add or remove. STOP.";
+        }
+        await gmail.labelMessage(messageId, addLabelIds, removeLabelIds);
+        return `Updated labels on message ${messageId} (added: ${addLabelIds.join(",") || "none"}; removed: ${removeLabelIds.join(",") || "none"}).`;
+      }
+
+      case "gmail_unlabel_message": {
+        const messageId = (input.message_id as string)?.trim();
+        const labelIds = (input.label_ids as string[]) ?? [];
+        if (!messageId) return "TOOL_ERROR: message_id is required. STOP.";
+        if (labelIds.length === 0) return "TOOL_ERROR: label_ids is required. STOP.";
+        await gmail.unlabelMessage(messageId, labelIds);
+        return `Removed labels ${labelIds.join(",")} from message ${messageId}.`;
+      }
+
+      case "gmail_label_thread": {
+        const threadId = (input.thread_id as string)?.trim();
+        const addLabelIds = (input.add_label_ids as string[]) ?? [];
+        const removeLabelIds = (input.remove_label_ids as string[]) ?? [];
+        if (!threadId) return "TOOL_ERROR: thread_id is required. STOP.";
+        if (addLabelIds.length === 0 && removeLabelIds.length === 0) {
+          return "TOOL_ERROR: provide at least one label id to add or remove. STOP.";
+        }
+        await gmail.labelThread(threadId, addLabelIds, removeLabelIds);
+        return `Updated labels on thread ${threadId} (added: ${addLabelIds.join(",") || "none"}; removed: ${removeLabelIds.join(",") || "none"}).`;
+      }
+
+      case "gmail_unlabel_thread": {
+        const threadId = (input.thread_id as string)?.trim();
+        const labelIds = (input.label_ids as string[]) ?? [];
+        if (!threadId) return "TOOL_ERROR: thread_id is required. STOP.";
+        if (labelIds.length === 0) return "TOOL_ERROR: label_ids is required. STOP.";
+        await gmail.unlabelThread(threadId, labelIds);
+        return `Removed labels ${labelIds.join(",")} from thread ${threadId}.`;
+      }
+
+      // ─── Calendar ──────────────────────────────────────────────────────
+      case "calendar_list_calendars": {
+        const cals = await calendar.listCalendars();
+        if (cals.length === 0) return "No calendars.";
+        return cals.map((c) =>
+          `${c.id}${c.primary ? " (primary)" : ""} — ${c.summary} [${c.timeZone}]`
+        ).join("\n");
+      }
+
+      case "calendar_list_events": {
+        const events = await calendar.listEvents({
+          calendarId: input.calendar_id as string | undefined,
+          timeMin: input.time_min as string | undefined,
+          timeMax: input.time_max as string | undefined,
+          q: input.q as string | undefined,
+          maxResults: input.max_results ? Number(input.max_results) : undefined,
+        });
+        if (events.length === 0) return "No events in that range.";
+        return events.map((e) => {
+          const start = "dateTime" in e.start ? e.start.dateTime : e.start.date;
+          const end = "dateTime" in e.end ? e.end.dateTime : e.end.date;
+          const attendees = (e.attendees ?? []).map((a) => a.email).join(", ");
+          return `id=${e.id} | ${start} → ${end}\n${e.summary ?? "(no title)"}${e.location ? ` @ ${e.location}` : ""}${attendees ? `\nAttendees: ${attendees}` : ""}`;
+        }).join("\n\n");
+      }
+
+      case "calendar_get_event": {
+        const calendarId = (input.calendar_id as string)?.trim();
+        const eventId = (input.event_id as string)?.trim();
+        if (!calendarId || !eventId) return "TOOL_ERROR: calendar_id and event_id required. STOP.";
+        const event = await calendar.getEvent(calendarId, eventId);
+        return JSON.stringify(event, null, 2);
+      }
+
+      case "calendar_create_event": {
+        const calendarId = (input.calendar_id as string) || "primary";
+        const summary = (input.summary as string)?.trim();
+        const start = input.start as { dateTime?: string; date?: string; timeZone?: string } | undefined;
+        const end = input.end as { dateTime?: string; date?: string; timeZone?: string } | undefined;
+        if (!summary) return "TOOL_ERROR: summary is required. STOP.";
+        if (!start || !end) return "TOOL_ERROR: start and end are required. STOP.";
+        const created = await calendar.createEvent(calendarId, {
+          summary,
+          description: input.description as string | undefined,
+          location: input.location as string | undefined,
+          start: start as calendar.EventDateTime,
+          end: end as calendar.EventDateTime,
+          attendees: input.attendees as calendar.CalendarAttendee[] | undefined,
+        });
+        return `Event created. id=${created.id} link=${created.htmlLink ?? "(no link)"}`;
+      }
+
+      case "calendar_update_event": {
+        const calendarId = (input.calendar_id as string)?.trim();
+        const eventId = (input.event_id as string)?.trim();
+        const patch = input.patch as Record<string, unknown> | undefined;
+        if (!calendarId || !eventId) return "TOOL_ERROR: calendar_id and event_id required. STOP.";
+        if (!patch || typeof patch !== "object") return "TOOL_ERROR: patch object is required. STOP.";
+        const updated = await calendar.updateEvent(calendarId, eventId, patch as Partial<calendar.CalendarEvent>);
+        return `Event updated. id=${updated.id} link=${updated.htmlLink ?? ""}`;
+      }
+
+      case "calendar_delete_event": {
+        const calendarId = (input.calendar_id as string)?.trim();
+        const eventId = (input.event_id as string)?.trim();
+        if (!calendarId || !eventId) return "TOOL_ERROR: calendar_id and event_id required. STOP.";
+        await calendar.deleteEvent(calendarId, eventId);
+        return `Event ${eventId} deleted from ${calendarId}.`;
+      }
+
+      case "calendar_respond_to_event": {
+        const calendarId = (input.calendar_id as string)?.trim();
+        const eventId = (input.event_id as string)?.trim();
+        const response = input.response as "accepted" | "declined" | "tentative";
+        if (!calendarId || !eventId) return "TOOL_ERROR: calendar_id and event_id required. STOP.";
+        if (!["accepted", "declined", "tentative"].includes(response)) {
+          return "TOOL_ERROR: response must be accepted, declined, or tentative. STOP.";
+        }
+        await calendar.respondToEvent(calendarId, eventId, response);
+        return `Responded ${response} to event ${eventId}.`;
+      }
+
+      case "calendar_suggest_time": {
+        const duration = Number(input.duration_minutes);
+        const attendees = (input.attendees as string[]) ?? [];
+        const withinDays = input.within_days ? Number(input.within_days) : undefined;
+        if (!duration || duration <= 0) return "TOOL_ERROR: duration_minutes must be positive. STOP.";
+        if (attendees.length === 0) return "TOOL_ERROR: attendees array is required. STOP.";
+        const slots = await calendar.suggestTime({ durationMinutes: duration, attendees, withinDays });
+        if (slots.length === 0) return "No free slots found in the requested window.";
+        return slots.map((s, i) => `[${i + 1}] ${s.start} → ${s.end}`).join("\n");
+      }
+
+    default:
+      return `Unknown tool: ${name}`;
   }
 }
 

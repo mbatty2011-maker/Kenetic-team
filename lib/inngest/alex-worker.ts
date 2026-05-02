@@ -275,7 +275,7 @@ Be direct, specific, and actionable. Produce actual content and numbers — not 
                   AGENT_TOOLS[specialistKey] ?? [],
                   anthropic,
                   4096,
-                  { supabase: supabase as unknown as SupabaseClient, userId }
+                  { supabase: supabase as unknown as SupabaseClient, userId, agent: specialistKey, conversationId, jobId }
                 );
               } catch {
                 specialistResponse = `[${capitalize(specialistKey)} encountered an error and could not respond]`;
@@ -304,7 +304,7 @@ Be direct, specific, and actionable. Produce actual content and numbers — not 
           const toolResult = await executeAgentTool(
             tu.name,
             input,
-            { supabase: supabase as unknown as SupabaseClient, userId }
+            { supabase: supabase as unknown as SupabaseClient, userId, agent: "alex", conversationId, jobId }
           );
           regularResultMap.set(tu.id, toolResult);
         }

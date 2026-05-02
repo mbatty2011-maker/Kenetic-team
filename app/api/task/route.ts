@@ -203,7 +203,7 @@ export async function POST(req: NextRequest) {
             const label = TOOL_LABELS[tu.name] ?? tu.name;
             addStep({ type: "tool_call", label, tool: tu.name });
 
-            const result = await executeAgentTool(tu.name, tu.input as Record<string, unknown>, { supabase, userId: user.id });
+            const result = await executeAgentTool(tu.name, tu.input as Record<string, unknown>, { supabase, userId: user.id, agent: agentKey as "alex" | "jeremy" | "kai" | "dana" | "marcus" | "maya", jobId: task.id });
 
             addStep({
               type: "tool_result",
