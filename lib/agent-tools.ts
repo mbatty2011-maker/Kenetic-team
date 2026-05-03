@@ -11,6 +11,7 @@ import { getUserTier } from "./tier";
 import { logActivity, type AgentName, type ActivityContext } from "./tools/activity-log";
 import * as gmail from "./tools/gmail";
 import * as calendar from "./tools/calendar";
+import { GoogleNotConnectedError } from "./tools/google-auth";
 
 export type ToolContext = {
   supabase: SupabaseClient;
@@ -609,9 +610,12 @@ export async function executeAgentTool(
       toolName: name,
       status: "failed",
       input,
-      error: message,
+      error: err instanceof GoogleNotConnectedError ? "google_not_connected" : message,
       durationMs: Date.now() - startedAt,
     });
+    if (err instanceof GoogleNotConnectedError) {
+      return "TOOL_ERROR: google_not_connected. The user has not connected their Google account. Tell them: 'You need to connect your Google account in Settings → Integrations before I can use Gmail or Calendar.' STOP. Do not retry.";
+    }
     return `Tool error (${name}): ${message}`;
   }
 }
@@ -809,7 +813,7 @@ async function runAgentTool(
         const query = (input.query as string)?.trim();
         if (!query) return "TOOL_ERROR: query is required. STOP.";
         const max = Number(input.max_results ?? 10);
-        const results = await gmail.searchThreads(query, max);
+        const results = await gmail.searchThreads(context.userId, query, max);
         if (results.length === 0) return "No matching Gmail threads.";
         return results.map((r, i) =>
           `[${i + 1}] thread_id=${r.id} | from: ${r.from} | subject: ${r.subject}\nsnippet: ${r.snippet}`
@@ -819,7 +823,7 @@ async function runAgentTool(
       case "gmail_get_thread": {
         const threadId = (input.thread_id as string)?.trim();
         if (!threadId) return "TOOL_ERROR: thread_id is required. STOP.";
-        const thread = await gmail.getThread(threadId);
+        const thread = await gmail.getThread(context.userId, threadId);
         return thread.messages.map((m, i) =>
           `[Message ${i + 1}] id=${m.id}\nFrom: ${m.from}\nTo: ${m.to}\nDate: ${m.date}\nSubject: ${m.subject}\n\n${m.body}`
         ).join("\n\n---\n\n") || "(empty thread)";
@@ -830,7 +834,7 @@ async function runAgentTool(
         const subject = (input.subject as string) ?? "";
         const body = (input.body as string) ?? "";
         if (!to) return "TOOL_ERROR: to is required. STOP.";
-        const draft = await gmail.createDraft({
+        const draft = await gmail.createDraft(context.userId, {
           to,
           subject,
           body,
@@ -841,7 +845,7 @@ async function runAgentTool(
 
       case "gmail_list_drafts": {
         const max = Number(input.max_results ?? 20);
-        const drafts = await gmail.listDrafts(max);
+        const drafts = await gmail.listDrafts(context.userId, max);
         if (drafts.length === 0) return "No drafts.";
         return drafts.map((d, i) =>
           `[${i + 1}] id=${d.id} subject="${d.subject}"\nsnippet: ${d.snippet}`
@@ -849,7 +853,7 @@ async function runAgentTool(
       }
 
       case "gmail_list_labels": {
-        const labels = await gmail.listLabels();
+        const labels = await gmail.listLabels(context.userId);
         if (labels.length === 0) return "No labels.";
         return labels.map((l) => `${l.id} — ${l.name} (${l.type})`).join("\n");
       }
@@ -857,7 +861,7 @@ async function runAgentTool(
       case "gmail_create_label": {
         const labelName = (input.name as string)?.trim();
         if (!labelName) return "TOOL_ERROR: name is required. STOP.";
-        const created = await gmail.createLabel(labelName);
+        const created = await gmail.createLabel(context.userId, labelName);
         return `Label created. id=${created.id} name="${created.name}".`;
       }
 
@@ -869,7 +873,7 @@ async function runAgentTool(
         if (addLabelIds.length === 0 && removeLabelIds.length === 0) {
           return "TOOL_ERROR: provide at least one label id to add or remove. STOP.";
         }
-        await gmail.labelMessage(messageId, addLabelIds, removeLabelIds);
+        await gmail.labelMessage(context.userId, messageId, addLabelIds, removeLabelIds);
         return `Updated labels on message ${messageId} (added: ${addLabelIds.join(",") || "none"}; removed: ${removeLabelIds.join(",") || "none"}).`;
       }
 
@@ -878,7 +882,7 @@ async function runAgentTool(
         const labelIds = (input.label_ids as string[]) ?? [];
         if (!messageId) return "TOOL_ERROR: message_id is required. STOP.";
         if (labelIds.length === 0) return "TOOL_ERROR: label_ids is required. STOP.";
-        await gmail.unlabelMessage(messageId, labelIds);
+        await gmail.unlabelMessage(context.userId, messageId, labelIds);
         return `Removed labels ${labelIds.join(",")} from message ${messageId}.`;
       }
 
@@ -890,7 +894,7 @@ async function runAgentTool(
         if (addLabelIds.length === 0 && removeLabelIds.length === 0) {
           return "TOOL_ERROR: provide at least one label id to add or remove. STOP.";
         }
-        await gmail.labelThread(threadId, addLabelIds, removeLabelIds);
+        await gmail.labelThread(context.userId, threadId, addLabelIds, removeLabelIds);
         return `Updated labels on thread ${threadId} (added: ${addLabelIds.join(",") || "none"}; removed: ${removeLabelIds.join(",") || "none"}).`;
       }
 
@@ -899,13 +903,13 @@ async function runAgentTool(
         const labelIds = (input.label_ids as string[]) ?? [];
         if (!threadId) return "TOOL_ERROR: thread_id is required. STOP.";
         if (labelIds.length === 0) return "TOOL_ERROR: label_ids is required. STOP.";
-        await gmail.unlabelThread(threadId, labelIds);
+        await gmail.unlabelThread(context.userId, threadId, labelIds);
         return `Removed labels ${labelIds.join(",")} from thread ${threadId}.`;
       }
 
       // ─── Calendar ──────────────────────────────────────────────────────
       case "calendar_list_calendars": {
-        const cals = await calendar.listCalendars();
+        const cals = await calendar.listCalendars(context.userId);
         if (cals.length === 0) return "No calendars.";
         return cals.map((c) =>
           `${c.id}${c.primary ? " (primary)" : ""} — ${c.summary} [${c.timeZone}]`
@@ -913,7 +917,7 @@ async function runAgentTool(
       }
 
       case "calendar_list_events": {
-        const events = await calendar.listEvents({
+        const events = await calendar.listEvents(context.userId, {
           calendarId: input.calendar_id as string | undefined,
           timeMin: input.time_min as string | undefined,
           timeMax: input.time_max as string | undefined,
@@ -933,7 +937,7 @@ async function runAgentTool(
         const calendarId = (input.calendar_id as string)?.trim();
         const eventId = (input.event_id as string)?.trim();
         if (!calendarId || !eventId) return "TOOL_ERROR: calendar_id and event_id required. STOP.";
-        const event = await calendar.getEvent(calendarId, eventId);
+        const event = await calendar.getEvent(context.userId, calendarId, eventId);
         return JSON.stringify(event, null, 2);
       }
 
@@ -944,7 +948,7 @@ async function runAgentTool(
         const end = input.end as { dateTime?: string; date?: string; timeZone?: string } | undefined;
         if (!summary) return "TOOL_ERROR: summary is required. STOP.";
         if (!start || !end) return "TOOL_ERROR: start and end are required. STOP.";
-        const created = await calendar.createEvent(calendarId, {
+        const created = await calendar.createEvent(context.userId, calendarId, {
           summary,
           description: input.description as string | undefined,
           location: input.location as string | undefined,
@@ -961,7 +965,7 @@ async function runAgentTool(
         const patch = input.patch as Record<string, unknown> | undefined;
         if (!calendarId || !eventId) return "TOOL_ERROR: calendar_id and event_id required. STOP.";
         if (!patch || typeof patch !== "object") return "TOOL_ERROR: patch object is required. STOP.";
-        const updated = await calendar.updateEvent(calendarId, eventId, patch as Partial<calendar.CalendarEvent>);
+        const updated = await calendar.updateEvent(context.userId, calendarId, eventId, patch as Partial<calendar.CalendarEvent>);
         return `Event updated. id=${updated.id} link=${updated.htmlLink ?? ""}`;
       }
 
@@ -969,7 +973,7 @@ async function runAgentTool(
         const calendarId = (input.calendar_id as string)?.trim();
         const eventId = (input.event_id as string)?.trim();
         if (!calendarId || !eventId) return "TOOL_ERROR: calendar_id and event_id required. STOP.";
-        await calendar.deleteEvent(calendarId, eventId);
+        await calendar.deleteEvent(context.userId, calendarId, eventId);
         return `Event ${eventId} deleted from ${calendarId}.`;
       }
 
@@ -981,7 +985,7 @@ async function runAgentTool(
         if (!["accepted", "declined", "tentative"].includes(response)) {
           return "TOOL_ERROR: response must be accepted, declined, or tentative. STOP.";
         }
-        await calendar.respondToEvent(calendarId, eventId, response);
+        await calendar.respondToEvent(context.userId, calendarId, eventId, response);
         return `Responded ${response} to event ${eventId}.`;
       }
 
@@ -991,7 +995,7 @@ async function runAgentTool(
         const withinDays = input.within_days ? Number(input.within_days) : undefined;
         if (!duration || duration <= 0) return "TOOL_ERROR: duration_minutes must be positive. STOP.";
         if (attendees.length === 0) return "TOOL_ERROR: attendees array is required. STOP.";
-        const slots = await calendar.suggestTime({ durationMinutes: duration, attendees, withinDays });
+        const slots = await calendar.suggestTime(context.userId, { durationMinutes: duration, attendees, withinDays });
         if (slots.length === 0) return "No free slots found in the requested window.";
         return slots.map((s, i) => `[${i + 1}] ${s.start} → ${s.end}`).join("\n");
       }

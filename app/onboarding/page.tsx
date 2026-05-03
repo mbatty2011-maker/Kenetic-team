@@ -3,7 +3,11 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import OnboardingClient from "./OnboardingClient";
 
-export default async function OnboardingPage() {
+type PageProps = {
+  searchParams?: { google?: string | string[] };
+};
+
+export default async function OnboardingPage({ searchParams }: PageProps) {
   const cookieStore = cookies();
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -29,7 +33,13 @@ export default async function OnboardingPage() {
     .eq("id", user.id)
     .single();
 
-  if (profile?.company_name || profile?.onboarding_complete) redirect("/chat");
+  // Allow re-entry when returning from the Google OAuth round-trip so the user
+  // can finish step 2 — otherwise fully-onboarded users go straight to chat.
+  const returningFromGoogle = typeof searchParams?.google === "string";
+
+  if ((profile?.company_name || profile?.onboarding_complete) && !returningFromGoogle) {
+    redirect("/chat");
+  }
 
   return <OnboardingClient />;
 }

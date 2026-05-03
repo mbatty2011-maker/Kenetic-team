@@ -2,8 +2,8 @@ import { getGoogleAccessToken } from "./google-auth";
 
 const BASE = "https://www.googleapis.com/calendar/v3";
 
-async function calFetch(path: string, init: RequestInit = {}) {
-  const token = await getGoogleAccessToken();
+async function calFetch(userId: string, path: string, init: RequestInit = {}) {
+  const token = await getGoogleAccessToken(userId);
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     headers: {
@@ -47,13 +47,13 @@ export type CalendarEvent = {
   hangoutLink?: string;
 };
 
-export async function listCalendars(): Promise<Array<{
+export async function listCalendars(userId: string): Promise<Array<{
   id: string;
   summary: string;
   primary: boolean;
   timeZone: string;
 }>> {
-  const data = await calFetch("/users/me/calendarList") as {
+  const data = await calFetch(userId, "/users/me/calendarList") as {
     items?: Array<{ id: string; summary: string; primary?: boolean; timeZone: string }>;
   };
   return (data.items ?? []).map((c) => ({
@@ -64,7 +64,7 @@ export async function listCalendars(): Promise<Array<{
   }));
 }
 
-export async function listEvents(args: {
+export async function listEvents(userId: string, args: {
   calendarId?: string;
   timeMin?: string;
   timeMax?: string;
@@ -82,25 +82,30 @@ export async function listEvents(args: {
   if (args.q) params.set("q", args.q);
 
   const data = await calFetch(
+    userId,
     `/calendars/${encodeURIComponent(calendarId)}/events?${params}`
   ) as { items?: CalendarEvent[] };
   return data.items ?? [];
 }
 
 export async function getEvent(
+  userId: string,
   calendarId: string,
   eventId: string
 ): Promise<CalendarEvent> {
   return await calFetch(
+    userId,
     `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`
   ) as CalendarEvent;
 }
 
 export async function createEvent(
+  userId: string,
   calendarId: string,
   event: Omit<CalendarEvent, "id" | "htmlLink" | "status" | "hangoutLink">
 ): Promise<CalendarEvent> {
   return await calFetch(
+    userId,
     `/calendars/${encodeURIComponent(calendarId)}/events`,
     {
       method: "POST",
@@ -110,11 +115,13 @@ export async function createEvent(
 }
 
 export async function updateEvent(
+  userId: string,
   calendarId: string,
   eventId: string,
   patch: Partial<CalendarEvent>
 ): Promise<CalendarEvent> {
   return await calFetch(
+    userId,
     `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
     {
       method: "PATCH",
@@ -124,35 +131,38 @@ export async function updateEvent(
 }
 
 export async function deleteEvent(
+  userId: string,
   calendarId: string,
   eventId: string
 ): Promise<void> {
   await calFetch(
+    userId,
     `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
     { method: "DELETE" }
   );
 }
 
-async function getOwnerEmail(): Promise<string> {
+async function getOwnerEmail(userId: string): Promise<string> {
   // Find the primary calendar's id, which equals the owner email for personal accounts.
-  const cals = await listCalendars();
+  const cals = await listCalendars(userId);
   const primary = cals.find((c) => c.primary);
   return primary?.id ?? "";
 }
 
 export async function respondToEvent(
+  userId: string,
   calendarId: string,
   eventId: string,
   response: "accepted" | "declined" | "tentative"
 ): Promise<void> {
-  const event = await getEvent(calendarId, eventId);
-  const ownerEmail = await getOwnerEmail();
+  const event = await getEvent(userId, calendarId, eventId);
+  const ownerEmail = await getOwnerEmail(userId);
   const attendees = (event.attendees ?? []).map((a) =>
     a.email.toLowerCase() === ownerEmail.toLowerCase()
       ? { ...a, responseStatus: response }
       : a
   );
-  await updateEvent(calendarId, eventId, { attendees });
+  await updateEvent(userId, calendarId, eventId, { attendees });
 }
 
 type FreeBusyInterval = { start: string; end: string };
@@ -176,7 +186,7 @@ function mergeIntervals(intervals: FreeBusyInterval[]): FreeBusyInterval[] {
   return merged;
 }
 
-export async function suggestTime(args: {
+export async function suggestTime(userId: string, args: {
   durationMinutes: number;
   attendees: string[];
   withinDays?: number;
@@ -190,7 +200,7 @@ export async function suggestTime(args: {
 
   const items = (args.attendees.length > 0 ? args.attendees : ["primary"]).map((email) => ({ id: email }));
 
-  const data = await calFetch("/freeBusy", {
+  const data = await calFetch(userId, "/freeBusy", {
     method: "POST",
     body: JSON.stringify({ timeMin, timeMax, items }),
   }) as { calendars?: Record<string, { busy?: FreeBusyInterval[] }> };

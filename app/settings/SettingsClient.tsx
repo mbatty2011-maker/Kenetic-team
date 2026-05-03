@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import FeedbackModal from "@/components/chat/FeedbackModal";
@@ -20,8 +20,14 @@ interface KnowledgeBaseEntry {
   created_at: string;
 }
 
+interface GoogleConnection {
+  connected: boolean;
+  email?: string;
+}
+
 export default function SettingsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
   const [profile, setProfile] = useState<Profile>({
     full_name: "",
@@ -37,11 +43,45 @@ export default function SettingsPage() {
   const [showFeedback, setShowFeedback] = useState(false);
   const [kbEntries, setKbEntries] = useState<KnowledgeBaseEntry[]>([]);
   const [deleteState, setDeleteState] = useState<"idle" | "confirm" | "deleting">("idle");
+  const [google, setGoogle] = useState<GoogleConnection>({ connected: false });
+  const [disconnectingGoogle, setDisconnectingGoogle] = useState(false);
 
   useEffect(() => {
     loadProfile();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const loadGoogleStatus = useCallback(async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase as any).rpc("get_oauth_connection_status", {
+      p_provider: "google",
+    });
+    if (error) {
+      setGoogle({ connected: false });
+      return;
+    }
+    const row = (data as { google_email?: string }[] | null)?.[0];
+    setGoogle({ connected: !!row, email: row?.google_email });
+  }, [supabase]);
+
+  useEffect(() => {
+    loadGoogleStatus();
+  }, [loadGoogleStatus]);
+
+  // Surface OAuth callback outcomes (?google=connected|error) and clear the param.
+  useEffect(() => {
+    const param = searchParams.get("google");
+    if (!param) return;
+    if (param === "connected") {
+      showToast("Google connected");
+      loadGoogleStatus();
+    } else if (param === "error") {
+      const reason = searchParams.get("reason") ?? "unknown_error";
+      showToast(`Google connection failed (${reason})`);
+    }
+    router.replace("/settings");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   async function loadProfile() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -141,6 +181,24 @@ export default function SettingsPage() {
     setKbEntries([]);
     await supabase.from("knowledge_base").delete().eq("user_id", user.id);
     showToast("Knowledge base cleared");
+  }
+
+  async function disconnectGoogle() {
+    setDisconnectingGoogle(true);
+    try {
+      const res = await fetch("/api/oauth/google/disconnect", { method: "POST" });
+      if (!res.ok) {
+        const { error } = await res.json().catch(() => ({ error: "Disconnect failed" }));
+        throw new Error(error ?? "Disconnect failed");
+      }
+      setGoogle({ connected: false });
+      showToast("Google disconnected");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Disconnect failed";
+      showToast(msg);
+    } finally {
+      setDisconnectingGoogle(false);
+    }
   }
 
   function showToast(msg: string) {
@@ -302,6 +360,43 @@ export default function SettingsPage() {
                 </div>
               </>
             )}
+          </div>
+        </section>
+
+        {/* Integrations */}
+        <section>
+          <h2 className="text-white/40 text-xs font-bold uppercase tracking-widest px-1 mb-3" style={monoStyle}>
+            Integrations
+          </h2>
+          <div className="border border-white divide-y divide-white/10">
+            <div className="px-4 py-3.5 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-white text-sm">Google (Gmail + Calendar)</div>
+                <div className="text-white/40 text-xs truncate" style={monoStyle}>
+                  {google.connected
+                    ? `Connected as ${google.email ?? "your Google account"}`
+                    : "Not connected"}
+                </div>
+              </div>
+              {google.connected ? (
+                <button
+                  onClick={disconnectGoogle}
+                  disabled={disconnectingGoogle}
+                  className="px-3 py-1.5 text-red-400 border border-red-500/40 text-xs font-bold uppercase tracking-widest hover:bg-red-950/30 transition-colors disabled:opacity-40"
+                  style={monoStyle}
+                >
+                  {disconnectingGoogle ? "Disconnecting…" : "Disconnect"}
+                </button>
+              ) : (
+                <a
+                  href="/api/oauth/google/start?next=/settings"
+                  className={saveBtn}
+                  style={monoStyle}
+                >
+                  Connect
+                </a>
+              )}
+            </div>
           </div>
         </section>
 

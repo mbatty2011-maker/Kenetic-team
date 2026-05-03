@@ -2,8 +2,8 @@ import { getGoogleAccessToken } from "./google-auth";
 
 const BASE = "https://gmail.googleapis.com/gmail/v1";
 
-async function gmailFetch(path: string, init: RequestInit = {}) {
-  const token = await getGoogleAccessToken();
+async function gmailFetch(userId: string, path: string, init: RequestInit = {}) {
+  const token = await getGoogleAccessToken(userId);
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     headers: {
@@ -89,6 +89,7 @@ export type GmailThreadSummary = {
 };
 
 export async function searchThreads(
+  userId: string,
   query: string,
   maxResults = 10
 ): Promise<GmailThreadSummary[]> {
@@ -96,7 +97,7 @@ export async function searchThreads(
     q: query,
     maxResults: String(Math.min(Math.max(maxResults, 1), 50)),
   });
-  const data = await gmailFetch(`/users/me/threads?${params}`) as {
+  const data = await gmailFetch(userId, `/users/me/threads?${params}`) as {
     threads?: { id: string; snippet?: string }[];
   };
   const threads = data.threads ?? [];
@@ -106,6 +107,7 @@ export async function searchThreads(
   const summaries = await Promise.all(threads.slice(0, maxResults).map(async (t) => {
     try {
       const thread = await gmailFetch(
+        userId,
         `/users/me/threads/${t.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From`
       ) as GmailThreadResource;
       const first = thread.messages?.[0];
@@ -132,11 +134,11 @@ export type GmailMessage = {
   body: string;
 };
 
-export async function getThread(threadId: string): Promise<{
+export async function getThread(userId: string, threadId: string): Promise<{
   id: string;
   messages: GmailMessage[];
 }> {
-  const data = await gmailFetch(`/users/me/threads/${threadId}?format=full`) as GmailThreadResource;
+  const data = await gmailFetch(userId, `/users/me/threads/${threadId}?format=full`) as GmailThreadResource;
   const messages: GmailMessage[] = (data.messages ?? []).map((m) => {
     const headers = m.payload?.headers;
     return {
@@ -158,11 +160,11 @@ export type GmailDraftSummary = {
   snippet: string;
 };
 
-export async function listDrafts(maxResults = 20): Promise<GmailDraftSummary[]> {
+export async function listDrafts(userId: string, maxResults = 20): Promise<GmailDraftSummary[]> {
   const params = new URLSearchParams({
     maxResults: String(Math.min(Math.max(maxResults, 1), 50)),
   });
-  const data = await gmailFetch(`/users/me/drafts?${params}`) as {
+  const data = await gmailFetch(userId, `/users/me/drafts?${params}`) as {
     drafts?: { id: string; message?: { id: string; threadId: string } }[];
   };
   const drafts = data.drafts ?? [];
@@ -171,6 +173,7 @@ export async function listDrafts(maxResults = 20): Promise<GmailDraftSummary[]> 
   const summaries = await Promise.all(drafts.map(async (d) => {
     try {
       const detail = await gmailFetch(
+        userId,
         `/users/me/drafts/${d.id}?format=metadata&metadataHeaders=Subject`
       ) as { id: string; message?: GmailMessageResource };
       const subject = findHeader(detail.message?.payload?.headers, "Subject");
@@ -187,7 +190,7 @@ export async function listDrafts(maxResults = 20): Promise<GmailDraftSummary[]> 
   return summaries;
 }
 
-export async function createDraft(args: {
+export async function createDraft(userId: string, args: {
   to: string;
   subject: string;
   body: string;
@@ -202,7 +205,7 @@ export async function createDraft(args: {
   ].join("\r\n");
   const raw = base64UrlEncode(`${headers}\r\n\r\n${args.body}`);
 
-  const data = await gmailFetch("/users/me/drafts", {
+  const data = await gmailFetch(userId, "/users/me/drafts", {
     method: "POST",
     body: JSON.stringify({
       message: {
@@ -217,15 +220,15 @@ export async function createDraft(args: {
 
 export type GmailLabel = { id: string; name: string; type: string };
 
-export async function listLabels(): Promise<GmailLabel[]> {
-  const data = await gmailFetch("/users/me/labels") as {
+export async function listLabels(userId: string): Promise<GmailLabel[]> {
+  const data = await gmailFetch(userId, "/users/me/labels") as {
     labels?: { id: string; name: string; type: string }[];
   };
   return (data.labels ?? []).map((l) => ({ id: l.id, name: l.name, type: l.type }));
 }
 
-export async function createLabel(name: string): Promise<{ id: string; name: string }> {
-  const data = await gmailFetch("/users/me/labels", {
+export async function createLabel(userId: string, name: string): Promise<{ id: string; name: string }> {
+  const data = await gmailFetch(userId, "/users/me/labels", {
     method: "POST",
     body: JSON.stringify({
       name,
@@ -237,36 +240,38 @@ export async function createLabel(name: string): Promise<{ id: string; name: str
 }
 
 export async function labelMessage(
+  userId: string,
   messageId: string,
   addLabelIds: string[],
   removeLabelIds: string[] = []
 ): Promise<void> {
-  await gmailFetch(`/users/me/messages/${messageId}/modify`, {
+  await gmailFetch(userId, `/users/me/messages/${messageId}/modify`, {
     method: "POST",
     body: JSON.stringify({ addLabelIds, removeLabelIds }),
   });
 }
 
-export async function unlabelMessage(messageId: string, labelIds: string[]): Promise<void> {
-  await gmailFetch(`/users/me/messages/${messageId}/modify`, {
+export async function unlabelMessage(userId: string, messageId: string, labelIds: string[]): Promise<void> {
+  await gmailFetch(userId, `/users/me/messages/${messageId}/modify`, {
     method: "POST",
     body: JSON.stringify({ addLabelIds: [], removeLabelIds: labelIds }),
   });
 }
 
 export async function labelThread(
+  userId: string,
   threadId: string,
   addLabelIds: string[],
   removeLabelIds: string[] = []
 ): Promise<void> {
-  await gmailFetch(`/users/me/threads/${threadId}/modify`, {
+  await gmailFetch(userId, `/users/me/threads/${threadId}/modify`, {
     method: "POST",
     body: JSON.stringify({ addLabelIds, removeLabelIds }),
   });
 }
 
-export async function unlabelThread(threadId: string, labelIds: string[]): Promise<void> {
-  await gmailFetch(`/users/me/threads/${threadId}/modify`, {
+export async function unlabelThread(userId: string, threadId: string, labelIds: string[]): Promise<void> {
+  await gmailFetch(userId, `/users/me/threads/${threadId}/modify`, {
     method: "POST",
     body: JSON.stringify({ addLabelIds: [], removeLabelIds: labelIds }),
   });

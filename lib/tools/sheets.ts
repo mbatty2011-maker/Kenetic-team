@@ -1,11 +1,11 @@
 import { getGoogleAccessToken } from "./google-auth";
-const getAccessToken = getGoogleAccessToken;
 
 export async function createSpreadsheet(
+  userId: string,
   title: string,
   sheets: { name: string; data: (string | number)[][] }[]
 ): Promise<{ id: string; url: string; title: string }> {
-  const token = await getAccessToken();
+  const token = await getGoogleAccessToken(userId);
 
   const createRes = await fetch("https://sheets.googleapis.com/v4/spreadsheets", {
     method: "POST",
@@ -38,17 +38,6 @@ export async function createSpreadsheet(
     );
   }
 
-  // Share with the account owner so the file is always accessible
-  const shareEmail = process.env.GMAIL_FROM_ADDRESS ?? "";
-  await fetch(
-    `https://www.googleapis.com/drive/v3/files/${spreadsheet.spreadsheetId}/permissions`,
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ role: "writer", type: "user", emailAddress: shareEmail }),
-    }
-  );
-
   return {
     id: spreadsheet.spreadsheetId,
     url: `https://docs.google.com/spreadsheets/d/${spreadsheet.spreadsheetId}/edit`,
@@ -57,10 +46,11 @@ export async function createSpreadsheet(
 }
 
 export async function readSpreadsheet(
+  userId: string,
   spreadsheetIdOrUrl: string,
   range = "A1:Z100"
 ): Promise<string> {
-  const token = await getAccessToken();
+  const token = await getGoogleAccessToken(userId);
 
   // Accept either a full URL or a bare ID
   const idMatch = spreadsheetIdOrUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);

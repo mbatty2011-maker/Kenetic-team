@@ -32,7 +32,13 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Public paths that don't require auth
-  const publicPaths = ["/login", "/signup", "/auth/callback", "/api/inngest"];
+  const publicPaths = [
+    "/login",
+    "/signup",
+    "/auth/callback",
+    "/api/inngest",
+    "/api/oauth/google/callback",
+  ];
   const isPublicPath = pathname === "/" || publicPaths.some((p) => pathname.startsWith(p));
 
   // Computer Use is internal only — redirect anyone who navigates there directly
@@ -54,17 +60,22 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // If authenticated user visits /onboarding but has already completed it, send to /chat
+  // If authenticated user visits /onboarding but has already completed it, send to /chat.
+  // Skip the redirect when we're returning from the Google OAuth round-trip so the
+  // user can finish step 2 (Connect Google) before completion is committed.
   if (user && pathname === "/onboarding") {
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("company_name, onboarding_complete")
-      .eq("id", user.id)
-      .single();
-    if (!profileError && (profile?.company_name || profile?.onboarding_complete)) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/chat";
-      return NextResponse.redirect(url);
+    const returningFromGoogle = request.nextUrl.searchParams.get("google");
+    if (!returningFromGoogle) {
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("company_name, onboarding_complete")
+        .eq("id", user.id)
+        .single();
+      if (!profileError && (profile?.company_name || profile?.onboarding_complete)) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/chat";
+        return NextResponse.redirect(url);
+      }
     }
   }
 
