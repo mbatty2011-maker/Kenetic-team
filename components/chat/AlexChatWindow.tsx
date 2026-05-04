@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { AGENTS } from "@/lib/agents";
+import { AGENTS, SUGGESTED_PROMPTS } from "@/lib/agents";
 import MessageBubble from "./MessageBubble";
 import TypingIndicator from "./TypingIndicator";
 import ChatInput from "./ChatInput";
@@ -172,6 +172,7 @@ export default function AlexChatWindow() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [synthesis, setSynthesis] = useState<SynthesisData | null>(null);
   const [userEmail, setUserEmail] = useState("");
+  const [pendingPrompt, setPendingPrompt] = useState<{ text: string } | null>(null);
 
   const alex = AGENTS.find((a) => a.key === "alex")!;
 
@@ -497,6 +498,19 @@ export default function AlexChatWindow() {
               </div>
               <p className="text-white font-bold text-sm">Alex</p>
               <p className="text-white/40 text-xs mt-1" style={{ fontFamily: "var(--font-space-mono), monospace" }}>Chief of Staff</p>
+
+              <div className="mt-6 flex flex-col gap-1.5 max-w-md mx-auto">
+                {SUGGESTED_PROMPTS.alex.map((prompt) => (
+                  <button
+                    key={prompt}
+                    onClick={() => setPendingPrompt({ text: prompt })}
+                    className="text-left text-xs text-white/50 hover:text-white border border-white/30 hover:border-white px-3 py-2 transition-colors duration-200"
+                    style={{ fontFamily: "var(--font-space-mono), monospace" }}
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -531,7 +545,7 @@ export default function AlexChatWindow() {
         <div ref={messagesEndRef} />
       </div>
 
-      <ChatInput onSend={sendMessage} isLoading={isLoading} agentKey="alex" />
+      <ChatInput onSend={sendMessage} isLoading={isLoading} agentKey="alex" pendingValue={pendingPrompt} />
     </div>
   );
 }

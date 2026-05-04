@@ -10,7 +10,7 @@ const EXAMPLE_CHIPS = [
   "We have 50 users but zero revenue — help me figure out pricing",
 ];
 
-type Step = "context" | "google";
+type Step = "google" | "context";
 
 type GoogleStatus = { connected: boolean; email?: string };
 
@@ -18,14 +18,12 @@ export default function OnboardingClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
-  const [step, setStep] = useState<Step>("context");
+  const [step, setStep] = useState<Step>("google");
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [conversationId, setConversationId] = useState<string | null>(null);
   const [google, setGoogle] = useState<GoogleStatus | null>(null);
   const [googleError, setGoogleError] = useState("");
-  const [continuing, setContinuing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const monoStyle = { fontFamily: "var(--font-space-mono), monospace" };
@@ -33,13 +31,6 @@ export default function OnboardingClient() {
   useEffect(() => {
     if (step === "context") textareaRef.current?.focus();
   }, [step]);
-
-  // If we land on /onboarding with ?google=connected|error, jump straight
-  // to step 2 so the user can confirm the connection or skip.
-  useEffect(() => {
-    const param = searchParams.get("google");
-    if (param) setStep("google");
-  }, [searchParams]);
 
   const refreshGoogleStatus = useCallback(async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -103,42 +94,17 @@ export default function OnboardingClient() {
           content: text,
         }),
         fetch("/api/welcome", { method: "POST" }).catch(() => {}),
+        supabase.from("profiles").update({
+          onboarding_complete: true,
+          updated_at: new Date().toISOString(),
+        }).eq("id", user.id),
       ]);
 
-      setConversationId(conversation.id);
-      setStep("google");
-      setLoading(false);
+      router.push(`/chat/alex?cid=${conversation.id}&autostart=1`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Something went wrong. Please try again.";
       setError(msg);
       setLoading(false);
-    }
-  }
-
-  async function completeAndContinue() {
-    if (continuing) return;
-    setContinuing(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      await supabase.from("profiles").update({
-        onboarding_complete: true,
-        updated_at: new Date().toISOString(),
-      }).eq("id", user.id);
-
-      // If the user reached step 2 by returning from OAuth (not by completing
-      // step 1 in this session), conversationId may be null — fall back to
-      // /chat in that case.
-      if (conversationId) {
-        router.push(`/chat/alex?cid=${conversationId}&autostart=1`);
-      } else {
-        router.push("/chat/alex");
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Something went wrong";
-      setGoogleError(msg);
-      setContinuing(false);
     }
   }
 
@@ -152,16 +118,7 @@ export default function OnboardingClient() {
           >
             KNETC
           </span>
-          {step === "context" ? (
-            <>
-              <h1 className="text-white text-2xl font-bold tracking-tight mb-2">
-                What&apos;s on your mind?
-              </h1>
-              <p className="text-white/50 text-xs" style={monoStyle}>
-                Tell Alex what you&apos;re working on — he&apos;ll loop in the right people.
-              </p>
-            </>
-          ) : (
+          {step === "google" ? (
             <>
               <h1 className="text-white text-2xl font-bold tracking-tight mb-2">
                 Connect your Google account
@@ -170,8 +127,70 @@ export default function OnboardingClient() {
                 Optional — lets Alex read your inbox, draft replies, and check your calendar.
               </p>
             </>
+          ) : (
+            <>
+              <h1 className="text-white text-2xl font-bold tracking-tight mb-2">
+                What&apos;s on your mind?
+              </h1>
+              <p className="text-white/50 text-xs" style={monoStyle}>
+                Tell Alex what you&apos;re working on — he&apos;ll loop in the right people.
+              </p>
+            </>
           )}
         </div>
+
+        {step === "google" && (
+          <div className="border border-white p-6 space-y-4">
+            {google?.connected ? (
+              <div className="border border-white/30 px-4 py-3 text-white text-sm" style={monoStyle}>
+                ✓ Connected as {google.email ?? "your Google account"}
+              </div>
+            ) : (
+              <div className="space-y-2 text-white/60 text-xs leading-relaxed" style={monoStyle}>
+                <p>You&apos;ll be redirected to Google to grant access to:</p>
+                <ul className="list-disc list-inside space-y-1 text-white/40">
+                  <li>Gmail (read, send, label, draft)</li>
+                  <li>Calendar (read, create, update events)</li>
+                  <li>Docs, Sheets, Drive (files Alex creates for you)</li>
+                </ul>
+                <p className="text-white/40">You can connect later from Settings → Integrations.</p>
+              </div>
+            )}
+
+            {googleError && (
+              <p className="text-red-400 border border-red-500 px-3 py-2 text-xs" style={monoStyle}>
+                {googleError}
+              </p>
+            )}
+
+            {google?.connected ? (
+              <button
+                onClick={() => setStep("context")}
+                className="w-full py-3 bg-white text-black text-xs font-bold uppercase tracking-widest hover:bg-black hover:text-white border border-white transition-colors duration-200"
+                style={monoStyle}
+              >
+                Continue →
+              </button>
+            ) : (
+              <div className="space-y-2">
+                <a
+                  href="/api/oauth/google/start?next=/onboarding"
+                  className="block w-full py-3 text-center bg-white text-black text-xs font-bold uppercase tracking-widest hover:bg-black hover:text-white border border-white transition-colors duration-200"
+                  style={monoStyle}
+                >
+                  Connect Google Account
+                </a>
+                <button
+                  onClick={() => setStep("context")}
+                  className="block w-full py-3 text-center text-white/50 hover:text-white text-xs font-bold uppercase tracking-widest border border-white/30 hover:border-white transition-colors duration-200"
+                  style={monoStyle}
+                >
+                  Skip for now
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {step === "context" && (
           <div className="border border-white p-6">
@@ -213,67 +232,12 @@ export default function OnboardingClient() {
               className="mt-5 w-full py-3 bg-white text-black text-xs font-bold uppercase tracking-widest hover:bg-black hover:text-white border border-white transition-colors duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
               style={monoStyle}
             >
-              {loading ? "Setting up…" : "Continue →"}
+              {loading ? "Setting up…" : "Talk to Alex →"}
             </button>
 
             <p className="text-center text-xs text-white/30 mt-3" style={monoStyle}>
               Press <kbd className="font-mono">⌘ Enter</kbd> to continue
             </p>
-          </div>
-        )}
-
-        {step === "google" && (
-          <div className="border border-white p-6 space-y-4">
-            {google?.connected ? (
-              <div className="border border-white/30 px-4 py-3 text-white text-sm" style={monoStyle}>
-                ✓ Connected as {google.email ?? "your Google account"}
-              </div>
-            ) : (
-              <div className="space-y-2 text-white/60 text-xs leading-relaxed" style={monoStyle}>
-                <p>You&apos;ll be redirected to Google to grant access to:</p>
-                <ul className="list-disc list-inside space-y-1 text-white/40">
-                  <li>Gmail (read, send, label, draft)</li>
-                  <li>Calendar (read, create, update events)</li>
-                  <li>Docs, Sheets, Drive (files Alex creates for you)</li>
-                </ul>
-                <p className="text-white/40">You can connect later from Settings → Integrations.</p>
-              </div>
-            )}
-
-            {googleError && (
-              <p className="text-red-400 border border-red-500 px-3 py-2 text-xs" style={monoStyle}>
-                {googleError}
-              </p>
-            )}
-
-            {google?.connected ? (
-              <button
-                onClick={completeAndContinue}
-                disabled={continuing}
-                className="w-full py-3 bg-white text-black text-xs font-bold uppercase tracking-widest hover:bg-black hover:text-white border border-white transition-colors duration-200 disabled:opacity-30"
-                style={monoStyle}
-              >
-                {continuing ? "Loading…" : "Talk to Alex →"}
-              </button>
-            ) : (
-              <div className="space-y-2">
-                <a
-                  href="/api/oauth/google/start?next=/onboarding"
-                  className="block w-full py-3 text-center bg-white text-black text-xs font-bold uppercase tracking-widest hover:bg-black hover:text-white border border-white transition-colors duration-200"
-                  style={monoStyle}
-                >
-                  Connect Google Account
-                </a>
-                <button
-                  onClick={completeAndContinue}
-                  disabled={continuing}
-                  className="block w-full py-3 text-center text-white/50 hover:text-white text-xs font-bold uppercase tracking-widest border border-white/30 hover:border-white transition-colors duration-200 disabled:opacity-30"
-                  style={monoStyle}
-                >
-                  {continuing ? "Loading…" : "Skip for now"}
-                </button>
-              </div>
-            )}
           </div>
         )}
       </div>

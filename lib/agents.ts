@@ -251,6 +251,44 @@ Never narrate work you are about to do. Only report work you have actually compl
 Never use swear words.`,
 };
 
+export const SUGGESTED_PROMPTS: Record<AgentKey, string[]> = {
+  alex: [
+    "Help me prep for a Series A — what do I need ready?",
+    "Loop in the team: should we hire engineering or sales next?",
+    "Draft my weekly investor update email",
+  ],
+  jeremy: [
+    "How is the business doing? Pull our latest MRR and revenue.",
+    "Build a 12-month P&L forecast — I'll feed you cost categories",
+    "What pricing should we charge for our enterprise tier?",
+  ],
+  kai: [
+    "Should we build this feature in-house or buy?",
+    "Review my GitHub repo and flag the riskiest files",
+    "Write a technical spec for migrating to Postgres",
+  ],
+  dana: [
+    "Show me my pipeline summary",
+    "Research a prospect and draft a tailored outreach email",
+    "What's blocking my biggest open deal?",
+  ],
+  marcus: [
+    "Draft a mutual NDA for a US software company",
+    "Review the contract I'm about to attach",
+    "Flag the legal risks of launching in Europe",
+  ],
+  maya: [
+    "Build a launch campaign for next month",
+    "Write 5 LinkedIn posts in our brand voice",
+    "Research our top 3 competitors' positioning",
+  ],
+  boardroom: [
+    "We have $200K cash — should we hire or extend runway?",
+    "Should we pivot based on the last 3 months of feedback?",
+    "Help me decide whether to take a strategic acquisition offer",
+  ],
+};
+
 export function getAgent(key: AgentKey): Agent | undefined {
   return AGENTS.find((a) => a.key === key);
 }

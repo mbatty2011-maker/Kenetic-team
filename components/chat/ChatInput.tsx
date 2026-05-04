@@ -24,10 +24,12 @@ export default function ChatInput({
   onSend,
   isLoading,
   agentKey,
+  pendingValue,
 }: {
   onSend: (message: string, attachments: ChatInputAttachment[]) => void;
   isLoading: boolean;
   agentKey: string;
+  pendingValue?: { text: string } | null;
 }) {
   const [value, setValue] = useState("");
   const [attachments, setAttachments] = useState<ChatInputAttachment[]>([]);
@@ -44,6 +46,12 @@ export default function ChatInput({
   useEffect(() => {
     adjustHeight();
   }, [value]);
+
+  useEffect(() => {
+    if (!pendingValue) return;
+    setValue(pendingValue.text);
+    textareaRef.current?.focus();
+  }, [pendingValue]);
 
   function adjustHeight() {
     const el = textareaRef.current;

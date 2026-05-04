@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { AGENTS, type AgentKey } from "@/lib/agents";
+import { AGENTS, SUGGESTED_PROMPTS, type AgentKey } from "@/lib/agents";
 import MessageBubble from "./MessageBubble";
 import TypingIndicator from "./TypingIndicator";
 import ChatInput, { type ChatInputAttachment } from "./ChatInput";
@@ -34,6 +34,7 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
     limitHit: string;
     tier: string;
   } | null>(null);
+  const [pendingPrompt, setPendingPrompt] = useState<{ text: string } | null>(null);
   const isNewConvoRef = useRef(false);
   const autostartRef = useRef(false);
 
@@ -452,6 +453,19 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
               >
                 {isBoardroom ? "Message all agents" : `Message ${agent?.name}`}
               </p>
+
+              <div className="mt-6 flex flex-col gap-1.5 max-w-md mx-auto">
+                {SUGGESTED_PROMPTS[agentKey].map((prompt) => (
+                  <button
+                    key={prompt}
+                    onClick={() => setPendingPrompt({ text: prompt })}
+                    className="text-left text-xs text-white/50 hover:text-white border border-white/30 hover:border-white px-3 py-2 transition-colors duration-200"
+                    style={{ fontFamily: "var(--font-space-mono), monospace" }}
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -487,7 +501,7 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
         <div ref={messagesEndRef} />
       </div>
 
-      <ChatInput onSend={sendMessage} isLoading={isLoading} agentKey={agentKey} />
+      <ChatInput onSend={sendMessage} isLoading={isLoading} agentKey={agentKey} pendingValue={pendingPrompt} />
 
       {upgradePrompt && (
         <UpgradePrompt
