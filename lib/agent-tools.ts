@@ -31,6 +31,8 @@ import {
 } from "./tools/financial";
 import { runDesktopTool } from "./tools/desktopRun";
 import { checkDesktopSessionLimit } from "./tools/desktopRateLimit";
+import * as crm from "./tools/crm";
+import { lookupLinkedInProfile, formatLinkedInProfile } from "./tools/linkedin";
 
 export type ToolContext = {
   supabase: SupabaseClient;
@@ -123,6 +125,7 @@ const SEND_EMAIL: Anthropic.Tool = {
       to: { type: "string", description: "Recipient email address — use the user's email from User Context" },
       subject: { type: "string" },
       body: { type: "string" },
+      force_send: { type: "boolean", description: "Dana-only: override the do_not_contact CRM block. Set true only when the user explicitly says to email a DNC contact anyway." },
     },
     required: ["to", "subject", "body"],
   },
@@ -138,6 +141,7 @@ const DRAFT_EMAIL: Anthropic.Tool = {
       to: { type: "string", description: "Recipient email address — use the user's email from User Context" },
       subject: { type: "string" },
       body: { type: "string" },
+      force_send: { type: "boolean", description: "Dana-only: override the do_not_contact CRM block. Set true only when the user explicitly says to email a DNC contact anyway." },
     },
     required: ["to", "subject", "body"],
   },
@@ -285,6 +289,7 @@ const GMAIL_CREATE_DRAFT: Anthropic.Tool = {
       subject: { type: "string" },
       body: { type: "string", description: "Plain-text body" },
       thread_id: { type: "string", description: "Optional Gmail thread id to reply within" },
+      force_send: { type: "boolean", description: "Dana-only: override the do_not_contact CRM block. Set true only when the user explicitly says to draft for a DNC contact anyway." },
     },
     required: ["to", "subject", "body"],
   },
@@ -678,6 +683,229 @@ const JEREMY_FINANCIAL_TOOLS = [
   BUILD_PNL_SNAPSHOT,
 ];
 
+// ─── CRM tools (Dana) ────────────────────────────────────────────────────────
+
+const CRM_ADD_CONTACT: Anthropic.Tool = {
+  name: "crm_add_contact",
+  description:
+    "Create or update a CRM contact. Idempotent on email — if a contact with the same email exists, it updates only the fields you supply. Use whenever you learn about a new prospect or get fresh info on an existing one. Returns the contact id you'll use for deals and activities.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      full_name: { type: "string", description: "Full name (required)" },
+      email: { type: "string", description: "Email address (used for upsert; case-insensitive)" },
+      phone: { type: "string" },
+      title: { type: "string", description: "Job title, e.g. 'VP Sales'" },
+      company: { type: "string" },
+      linkedin_url: { type: "string", description: "Public LinkedIn profile URL" },
+      notes: { type: "string", description: "Freeform notes — research findings, mutual connections, etc." },
+      source: { type: "string", description: "Where the lead came from (e.g. 'inbound', 'referral: Jane', 'event: SaaStr')" },
+      status: {
+        type: "string",
+        enum: ["active", "cold", "do_not_contact", "customer"],
+        description: "Defaults to 'active'. Set 'do_not_contact' to block future emails to this person.",
+      },
+      tags: { type: "array", items: { type: "string" }, description: "Freeform tags for segmentation" },
+    },
+    required: ["full_name"],
+  },
+};
+
+const CRM_GET_CONTACT: Anthropic.Tool = {
+  name: "crm_get_contact",
+  description:
+    "Fetch a single contact by id, email, or name. Returns the contact plus their open deals and the last 10 activities. Use whenever a person comes up in conversation — your first move before drafting any outreach.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      id_or_email: { type: "string", description: "Contact id (UUID), email address, or full name" },
+    },
+    required: ["id_or_email"],
+  },
+};
+
+const CRM_LIST_CONTACTS: Anthropic.Tool = {
+  name: "crm_list_contacts",
+  description:
+    "List/filter contacts. Use to find someone by company when you don't have their email, or to pull a segment for a campaign.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      company: { type: "string", description: "Match contacts whose company contains this substring (case-insensitive)" },
+      status: {
+        type: "string",
+        enum: ["active", "cold", "do_not_contact", "customer"],
+      },
+      tag: { type: "string", description: "Match contacts who have this tag" },
+      recently_contacted_days: { type: "integer", description: "Only contacts touched in the last N days" },
+      query: { type: "string", description: "Free-text match across name, company, or email" },
+      limit: { type: "integer", description: "Default 25, max 100" },
+      offset: { type: "integer", description: "For pagination (default 0)" },
+    },
+  },
+};
+
+const CRM_CREATE_DEAL: Anthropic.Tool = {
+  name: "crm_create_deal",
+  description:
+    "Create a deal. Link to a primary contact and optionally add additional stakeholders with their roles (champion, decision_maker, procurement, technical, user). Stages: new, qualified, meeting, proposal, negotiation, won, lost.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      title: { type: "string", description: "Deal title, e.g. 'Acme — annual seats'" },
+      primary_contact_id: { type: "string", description: "UUID of the primary contact (your champion or main point of contact)" },
+      additional_contacts: {
+        type: "array",
+        description: "Other stakeholders on the deal",
+        items: {
+          type: "object" as const,
+          properties: {
+            contact_id: { type: "string", description: "UUID of the contact" },
+            role: {
+              type: "string",
+              enum: ["champion", "decision_maker", "procurement", "technical", "user", "other"],
+            },
+          },
+          required: ["contact_id"],
+        },
+      },
+      company: { type: "string" },
+      value: { type: "number", description: "Deal value in major currency units (e.g. 50000 for $50k)" },
+      currency: { type: "string", description: "ISO currency code (default 'usd')" },
+      stage: {
+        type: "string",
+        enum: ["new", "qualified", "meeting", "proposal", "negotiation", "won", "lost"],
+      },
+      probability: { type: "integer", description: "0-100 close probability (default 10)" },
+      expected_close_date: { type: "string", description: "YYYY-MM-DD" },
+      notes: { type: "string" },
+    },
+    required: ["title"],
+  },
+};
+
+const CRM_UPDATE_DEAL: Anthropic.Tool = {
+  name: "crm_update_deal",
+  description:
+    "Patch a deal. Only fields you supply are updated. Stage transitions to won/lost auto-stamp closed_at.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      deal_id: { type: "string", description: "Deal UUID" },
+      title: { type: "string" },
+      primary_contact_id: { type: "string" },
+      company: { type: "string" },
+      value: { type: "number", description: "Deal value in major currency units" },
+      currency: { type: "string" },
+      stage: {
+        type: "string",
+        enum: ["new", "qualified", "meeting", "proposal", "negotiation", "won", "lost"],
+      },
+      probability: { type: "integer", description: "0-100" },
+      expected_close_date: { type: "string", description: "YYYY-MM-DD" },
+      notes: { type: "string" },
+    },
+    required: ["deal_id"],
+  },
+};
+
+const CRM_GET_DEAL: Anthropic.Tool = {
+  name: "crm_get_deal",
+  description:
+    "Fetch a single deal with primary contact, all stakeholders, and the last 20 activities. Use when the user asks about a specific deal by name or id.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      deal_id: { type: "string", description: "Deal UUID" },
+    },
+    required: ["deal_id"],
+  },
+};
+
+const CRM_LIST_DEALS: Anthropic.Tool = {
+  name: "crm_list_deals",
+  description:
+    "List/filter deals. Defaults show all deals across all stages. Use open_only=true to exclude won/lost.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      stage: {
+        type: "string",
+        enum: ["new", "qualified", "meeting", "proposal", "negotiation", "won", "lost"],
+      },
+      company: { type: "string", description: "Match deals whose company contains this substring" },
+      contact_id: { type: "string", description: "Only deals where this contact is primary" },
+      open_only: { type: "boolean", description: "Exclude won and lost (default false)" },
+      limit: { type: "integer", description: "Default 50, max 200" },
+      offset: { type: "integer" },
+    },
+  },
+};
+
+const CRM_PIPELINE_SUMMARY: Anthropic.Tool = {
+  name: "crm_pipeline_summary",
+  description:
+    "Aggregate pipeline view: count/total/weighted value per stage, plus the 5 most recent wins and losses. Start here for any 'how's pipeline' or 'forecast' question — drill into crm_list_deals only if the user wants specifics.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      currency: { type: "string", description: "Currency code for display (default 'usd')" },
+    },
+  },
+};
+
+const CRM_LOG_ACTIVITY: Anthropic.Tool = {
+  name: "crm_log_activity",
+  description:
+    "Log a sales activity (call, meeting, note, task, linkedin touch) against a contact and/or deal. Do NOT use this for emails you draft via gmail_create_draft, draft_email, or send_email — those are auto-logged.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      contact_id: { type: "string", description: "UUID of the contact this activity relates to" },
+      deal_id: { type: "string", description: "UUID of the deal this activity relates to" },
+      activity_type: {
+        type: "string",
+        enum: ["call", "meeting", "note", "task", "linkedin"],
+        description: "Type of activity. Do not use 'email' here — emails are auto-logged.",
+      },
+      subject: { type: "string", description: "Short subject line, e.g. '30-min discovery call'" },
+      body: { type: "string", description: "Notes from the call/meeting, summary of the touch" },
+      occurred_at: { type: "string", description: "ISO timestamp; defaults to now" },
+    },
+    required: ["activity_type"],
+  },
+};
+
+const CRM_TOOLS = [
+  CRM_ADD_CONTACT,
+  CRM_GET_CONTACT,
+  CRM_LIST_CONTACTS,
+  CRM_CREATE_DEAL,
+  CRM_UPDATE_DEAL,
+  CRM_GET_DEAL,
+  CRM_LIST_DEALS,
+  CRM_PIPELINE_SUMMARY,
+  CRM_LOG_ACTIVITY,
+];
+
+// ─── LinkedIn tools (Dana) ───────────────────────────────────────────────────
+
+const LINKEDIN_LOOKUP_PROFILE: Anthropic.Tool = {
+  name: "linkedin_lookup_profile",
+  description:
+    "Fetch a public LinkedIn profile by URL or by name+company. Returns headline, current role, summary, work history, and education. Cached 30 days. No OAuth, public data only. Use for any new prospect before drafting outreach so you can reference their background.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      url: { type: "string", description: "Public LinkedIn profile URL (e.g. https://www.linkedin.com/in/janedoe). Preferred when known." },
+      name: { type: "string", description: "Full name. Use when URL is unknown." },
+      company: { type: "string", description: "Company name to disambiguate when searching by name." },
+    },
+  },
+};
+
+const LINKEDIN_TOOLS = [LINKEDIN_LOOKUP_PROFILE];
+
 // ─── Per-agent tool sets ─────────────────────────────────────────────────────
 
 const ALL_TOOLS = [CREATE_FILE, WEB_SEARCH, SEND_EMAIL, DRAFT_EMAIL, APPEND_TO_KB, GET_AGENT_OUTPUT];
@@ -685,7 +913,7 @@ const ALL_TOOLS = [CREATE_FILE, WEB_SEARCH, SEND_EMAIL, DRAFT_EMAIL, APPEND_TO_K
 const MAYA_TOOLS = [CREATE_FILE, WEB_SEARCH, APPEND_TO_KB, GET_AGENT_OUTPUT];
 
 const ALEX_TOOLS = [...ALL_TOOLS, ...GMAIL_TOOLS, ...CALENDAR_TOOLS, USE_DESKTOP];
-const DANA_TOOLS = [...ALL_TOOLS, ...GMAIL_TOOLS];
+const DANA_TOOLS = [...ALL_TOOLS, ...GMAIL_TOOLS, ...CRM_TOOLS, ...LINKEDIN_TOOLS];
 const JEREMY_TOOLS = [...ALL_TOOLS, ...JEREMY_FINANCIAL_TOOLS];
 
 // AGENT_TOOLS: used in /api/chat — Alex gets Gmail+Calendar; Dana gets Gmail; Kai also gets propose_ssh + execute_code; Jeremy gets Stripe + Sheets + P&L
@@ -743,6 +971,16 @@ export const TOOL_LABELS: Record<string, string> = {
   read_google_sheet:           "Reading sheet...",
   write_google_sheet:          "Writing sheet...",
   build_pnl_snapshot:          "Building P&L snapshot...",
+  crm_add_contact:             "Saving contact...",
+  crm_get_contact:             "Looking up contact...",
+  crm_list_contacts:           "Searching contacts...",
+  crm_create_deal:             "Creating deal...",
+  crm_update_deal:             "Updating deal...",
+  crm_get_deal:                "Loading deal...",
+  crm_list_deals:              "Loading deals...",
+  crm_pipeline_summary:        "Summarizing pipeline...",
+  crm_log_activity:            "Logging activity...",
+  linkedin_lookup_profile:     "Looking up LinkedIn profile...",
 };
 
 // ─── Content-to-text helpers (used so file content is saved in result) ───────
@@ -917,23 +1155,49 @@ async function runAgentTool(
       case "send_email": {
         const to = (input.to as string) || "";
         if (!to.trim()) throw new Error("Email recipient address is missing");
-        await sendEmail({
-          to,
-          subject: input.subject as string,
-          body: input.body as string,
-        });
-        return `Email sent to ${to} — subject: "${input.subject}"`;
+        const subject = input.subject as string;
+        const body = input.body as string;
+        if (context.agent === "dana" && !input.force_send) {
+          const dncCheck = await crm.findContactByEmail(context.supabase, context.userId, to);
+          if (dncCheck && dncCheck.status === "do_not_contact") {
+            return `TOOL_ERROR: do_not_contact_blocked. ${dncCheck.full_name} (${dncCheck.email}) is marked do_not_contact in your CRM. To override, retry with force_send: true. To proceed sustainably, first update the contact's status with crm_add_contact (status: 'active'). STOP.`;
+          }
+        }
+        await sendEmail({ to, subject, body });
+        if (context.agent === "dana") {
+          void crm.autoLogEmailActivity(
+            context.supabase,
+            context.userId,
+            "send_email",
+            { to, subject, body },
+            {}
+          );
+        }
+        return `Email sent to ${to} — subject: "${subject}"`;
       }
 
       case "draft_email": {
         const to = (input.to as string) || "";
         if (!to.trim()) throw new Error("Email recipient address is missing");
-        await draftEmail({
-          to,
-          subject: input.subject as string,
-          body: input.body as string,
-        });
-        return `Email sent to ${to} — subject: "${input.subject}".`;
+        const subject = input.subject as string;
+        const body = input.body as string;
+        if (context.agent === "dana" && !input.force_send) {
+          const dncCheck = await crm.findContactByEmail(context.supabase, context.userId, to);
+          if (dncCheck && dncCheck.status === "do_not_contact") {
+            return `TOOL_ERROR: do_not_contact_blocked. ${dncCheck.full_name} (${dncCheck.email}) is marked do_not_contact in your CRM. To override, retry with force_send: true. To proceed sustainably, first update the contact's status with crm_add_contact (status: 'active'). STOP.`;
+          }
+        }
+        await draftEmail({ to, subject, body });
+        if (context.agent === "dana") {
+          void crm.autoLogEmailActivity(
+            context.supabase,
+            context.userId,
+            "draft_email",
+            { to, subject, body },
+            {}
+          );
+        }
+        return `Email sent to ${to} — subject: "${subject}".`;
       }
 
       case "append_to_knowledge_base": {
@@ -1066,12 +1330,27 @@ async function runAgentTool(
         const subject = (input.subject as string) ?? "";
         const body = (input.body as string) ?? "";
         if (!to) return "TOOL_ERROR: to is required. STOP.";
+        if (context.agent === "dana" && !input.force_send) {
+          const dncCheck = await crm.findContactByEmail(context.supabase, context.userId, to);
+          if (dncCheck && dncCheck.status === "do_not_contact") {
+            return `TOOL_ERROR: do_not_contact_blocked. ${dncCheck.full_name} (${dncCheck.email}) is marked do_not_contact in your CRM. To override, retry with force_send: true. To proceed sustainably, first update the contact's status with crm_add_contact (status: 'active'). STOP.`;
+          }
+        }
         const draft = await gmail.createDraft(context.userId, {
           to,
           subject,
           body,
           threadId: input.thread_id as string | undefined,
         });
+        if (context.agent === "dana") {
+          void crm.autoLogEmailActivity(
+            context.supabase,
+            context.userId,
+            "gmail_create_draft",
+            { to, subject, body },
+            { gmail_message_id: draft.id, gmail_thread_id: draft.threadId }
+          );
+        }
         return `Gmail draft created. id=${draft.id} threadId=${draft.threadId}. The draft is in the user's Gmail Drafts folder — they review and send.`;
       }
 
@@ -1348,6 +1627,177 @@ async function runAgentTool(
         });
         const finalTitle = titleInput || `P&L — Last ${result.periodDays}d (${result.asOf})`;
         return formatPnlSnapshotResult(finalTitle, result);
+      }
+
+      // ─── CRM (Dana) ─────────────────────────────────────────────────────
+      case "crm_add_contact": {
+        const fullName = ((input.full_name as string) ?? "").trim();
+        if (!fullName) return "TOOL_ERROR: full_name is required. STOP.";
+        const { contact, created } = await crm.addContact(context.supabase, context.userId, {
+          full_name: fullName,
+          email: input.email as string | undefined,
+          phone: input.phone as string | undefined,
+          title: input.title as string | undefined,
+          company: input.company as string | undefined,
+          linkedin_url: input.linkedin_url as string | undefined,
+          notes: input.notes as string | undefined,
+          source: input.source as string | undefined,
+          status: input.status as crm.ContactStatus | undefined,
+          tags: Array.isArray(input.tags) ? (input.tags as string[]) : undefined,
+        });
+        const verb = created ? "Created" : "Updated";
+        return `${verb} contact ${contact.full_name} (id ${contact.id}).\n\n${crm.formatContact(contact)}`;
+      }
+
+      case "crm_get_contact": {
+        const idOrEmail = ((input.id_or_email as string) ?? "").trim();
+        if (!idOrEmail) return "TOOL_ERROR: id_or_email is required. STOP.";
+        const result = await crm.getContactByIdOrEmail(context.supabase, context.userId, idOrEmail);
+        if (!result) return `No CRM contact found for "${idOrEmail}". Use crm_add_contact to create one.`;
+        return crm.formatContact(result.contact, result.deals, result.activities);
+      }
+
+      case "crm_list_contacts": {
+        const { contacts, total } = await crm.listContacts(context.supabase, context.userId, {
+          company: input.company as string | undefined,
+          status: input.status as crm.ContactStatus | undefined,
+          tag: input.tag as string | undefined,
+          recently_contacted_days: input.recently_contacted_days
+            ? Number(input.recently_contacted_days)
+            : undefined,
+          query: input.query as string | undefined,
+          limit: input.limit ? Number(input.limit) : undefined,
+          offset: input.offset ? Number(input.offset) : undefined,
+        });
+        return crm.formatContactList(contacts, total);
+      }
+
+      case "crm_create_deal": {
+        const title = ((input.title as string) ?? "").trim();
+        if (!title) return "TOOL_ERROR: title is required. STOP.";
+        try {
+          const deal = await crm.createDeal(context.supabase, context.userId, {
+            title,
+            primary_contact_id: input.primary_contact_id as string | undefined,
+            additional_contacts: Array.isArray(input.additional_contacts)
+              ? (input.additional_contacts as { contact_id: string; role?: crm.DealRole }[])
+              : undefined,
+            company: input.company as string | undefined,
+            value_minor:
+              input.value !== undefined ? crm.dollarsToMinor(input.value as number) : undefined,
+            currency: input.currency as string | undefined,
+            stage: input.stage as crm.DealStage | undefined,
+            probability: input.probability ? Number(input.probability) : undefined,
+            expected_close_date: input.expected_close_date as string | undefined,
+            notes: input.notes as string | undefined,
+          });
+          return `Deal created (id ${deal.id}).\n\n${crm.formatDeal(deal, null, [], [])}`;
+        } catch (err) {
+          return `TOOL_ERROR: ${(err as Error).message}. STOP.`;
+        }
+      }
+
+      case "crm_update_deal": {
+        const dealId = ((input.deal_id as string) ?? "").trim();
+        if (!dealId) return "TOOL_ERROR: deal_id is required. STOP.";
+        try {
+          const patch: crm.UpdateDealPatch = {};
+          if (input.title !== undefined) patch.title = input.title as string;
+          if (input.primary_contact_id !== undefined) {
+            patch.primary_contact_id = input.primary_contact_id as string | null;
+          }
+          if (input.company !== undefined) patch.company = input.company as string | null;
+          if (input.value !== undefined) patch.value_minor = crm.dollarsToMinor(input.value as number);
+          if (input.currency !== undefined) patch.currency = input.currency as string;
+          if (input.stage !== undefined) patch.stage = input.stage as crm.DealStage;
+          if (input.probability !== undefined) patch.probability = Number(input.probability);
+          if (input.expected_close_date !== undefined) {
+            patch.expected_close_date = input.expected_close_date as string | null;
+          }
+          if (input.notes !== undefined) patch.notes = input.notes as string | null;
+          const deal = await crm.updateDeal(context.supabase, context.userId, dealId, patch);
+          return `Deal updated.\n\n${crm.formatDeal(deal, null, [], [])}`;
+        } catch (err) {
+          return `TOOL_ERROR: ${(err as Error).message}. STOP.`;
+        }
+      }
+
+      case "crm_get_deal": {
+        const dealId = ((input.deal_id as string) ?? "").trim();
+        if (!dealId) return "TOOL_ERROR: deal_id is required. STOP.";
+        const result = await crm.getDeal(context.supabase, context.userId, dealId);
+        if (!result) return `No deal found for id ${dealId}.`;
+        return crm.formatDeal(result.deal, result.primary_contact, result.stakeholders, result.activities);
+      }
+
+      case "crm_list_deals": {
+        const { deals, total } = await crm.listDeals(context.supabase, context.userId, {
+          stage: input.stage as crm.DealStage | undefined,
+          company: input.company as string | undefined,
+          contact_id: input.contact_id as string | undefined,
+          open_only: input.open_only === true,
+          limit: input.limit ? Number(input.limit) : undefined,
+          offset: input.offset ? Number(input.offset) : undefined,
+        });
+        return crm.formatDealList(deals, total);
+      }
+
+      case "crm_pipeline_summary": {
+        const summary = await crm.pipelineSummary(
+          context.supabase,
+          context.userId,
+          (input.currency as string) || "usd"
+        );
+        return crm.formatPipelineSummary(summary);
+      }
+
+      case "crm_log_activity": {
+        const activityType = (input.activity_type as crm.ActivityType) || "note";
+        if (activityType === "email") {
+          return "TOOL_ERROR: Don't log emails manually — emails drafted via gmail_create_draft, draft_email, or send_email are auto-logged. Use this tool only for call, meeting, note, task, or linkedin. STOP.";
+        }
+        try {
+          const activity = await crm.logCrmActivity(context.supabase, context.userId, {
+            contact_id: input.contact_id as string | undefined,
+            deal_id: input.deal_id as string | undefined,
+            activity_type: activityType,
+            subject: input.subject as string | undefined,
+            body: input.body as string | undefined,
+            occurred_at: input.occurred_at as string | undefined,
+          });
+          let contactName: string | null = null;
+          if (activity.contact_id) {
+            const c = await context.supabase
+              .from("crm_contacts")
+              .select("full_name")
+              .eq("id", activity.contact_id)
+              .eq("user_id", context.userId)
+              .maybeSingle();
+            contactName = (c.data as { full_name: string } | null)?.full_name ?? null;
+          }
+          return crm.formatActivity(activity, contactName);
+        } catch (err) {
+          return `TOOL_ERROR: ${(err as Error).message}. STOP.`;
+        }
+      }
+
+      // ─── LinkedIn (Dana) ────────────────────────────────────────────────
+      case "linkedin_lookup_profile": {
+        const url = (input.url as string)?.trim();
+        const name = (input.name as string)?.trim();
+        const company = (input.company as string)?.trim();
+        if (!url && !name) {
+          return "TOOL_ERROR: provide either url or name (with optional company). STOP.";
+        }
+        const tier = await getUserTier(context.supabase, context.userId);
+        const result = await lookupLinkedInProfile(context.supabase, context.userId, {
+          url: url || undefined,
+          name: name || undefined,
+          company: company || undefined,
+          tier,
+        });
+        if (!result.ok) return `TOOL_ERROR: ${result.reason}. STOP.`;
+        return formatLinkedInProfile(result.profile, result.cached);
       }
 
     default:
