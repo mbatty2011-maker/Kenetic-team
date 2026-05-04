@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { AGENTS, type AgentKey } from "@/lib/agents";
 import MessageBubble from "./MessageBubble";
 import TypingIndicator from "./TypingIndicator";
-import ChatInput from "./ChatInput";
+import ChatInput, { type ChatInputAttachment } from "./ChatInput";
 import AgentHeader from "./AgentHeader";
 import UpgradePrompt from "@/components/UpgradePrompt";
 
@@ -73,7 +73,7 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
     if (!user) return;
     isNewConvoRef.current = true;
     setIsLoading(true);
-    await handleAgentMessage(lastMsg.content, cid, user.id);
+    await handleAgentMessage(lastMsg.content, cid, user.id, []);
     setIsLoading(false);
   }
 
@@ -105,19 +105,35 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
     return data.id;
   }
 
-  async function sendMessage(content: string) {
-    if (!content.trim() || isLoading) return;
+  async function sendMessage(
+    content: string,
+    attachments: ChatInputAttachment[] = []
+  ) {
+    if ((!content.trim() && attachments.length === 0) || isLoading) return;
 
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
     isNewConvoRef.current = !conversationId;
-    const cid = await ensureConversation(content);
+    const cid = await ensureConversation(
+      content || (attachments[0]?.name ?? "Document attachment")
+    );
+
+    const attachmentMarker =
+      attachments.length > 0
+        ? `\n\n${attachments
+            .map(
+              (a) =>
+                `[attached: ${a.name} (${Math.max(1, Math.round(a.size_bytes / 1024))} KB)]`
+            )
+            .join("\n")}`
+        : "";
+    const storedContent = `${content}${attachmentMarker}`;
 
     const userMsg: Message = {
       id: crypto.randomUUID(),
       role: "user",
-      content,
+      content: storedContent,
       agent_key: agentKey,
       created_at: new Date().toISOString(),
     };
@@ -128,7 +144,7 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
       user_id: user.id,
       agent_key: agentKey,
       role: "user",
-      content,
+      content: storedContent,
     });
 
     setIsLoading(true);
@@ -136,13 +152,18 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
     if (isBoardroom) {
       await handleBoardroomMessage(content, cid, user.id);
     } else {
-      await handleAgentMessage(content, cid, user.id);
+      await handleAgentMessage(content, cid, user.id, attachments);
     }
 
     setIsLoading(false);
   }
 
-  async function handleAgentMessage(content: string, cid: string, uid: string) {
+  async function handleAgentMessage(
+    content: string,
+    cid: string,
+    uid: string,
+    attachments: ChatInputAttachment[]
+  ) {
     const streamingId = crypto.randomUUID();
     setMessages((prev) => [
       ...prev,
@@ -160,7 +181,12 @@ export default function ChatWindow({ agentKey }: { agentKey: AgentKey | "boardro
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentKey, message: content, conversationId: cid }),
+        body: JSON.stringify({
+          agentKey,
+          message: content,
+          conversationId: cid,
+          ...(attachments.length ? { attachments } : {}),
+        }),
       });
 
       if (!res.ok) {

@@ -41,16 +41,30 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   let agentKey: AgentKey, message: string, conversationId: string;
+  let attachments: Array<{
+    document_id: string;
+    name: string;
+    mime_type: string;
+    size_bytes: number;
+    parsed_text_preview: string;
+  }> = [];
   try {
-    ({ agentKey, message, conversationId } = await req.json() as {
+    const body = (await req.json()) as {
       agentKey: AgentKey;
       message: string;
       conversationId: string;
-    });
+      attachments?: typeof attachments;
+    };
+    agentKey = body.agentKey;
+    message = body.message;
+    conversationId = body.conversationId;
+    if (Array.isArray(body.attachments)) attachments = body.attachments;
   } catch {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
-  if (!message || typeof message !== "string" || message.length > 32000)
+  if (typeof message !== "string" || message.length > 32000)
+    return NextResponse.json({ error: "Invalid message" }, { status: 400 });
+  if (!message && attachments.length === 0)
     return NextResponse.json({ error: "Invalid message" }, { status: 400 });
   if (!conversationId || typeof conversationId !== "string")
     return NextResponse.json({ error: "Invalid conversationId" }, { status: 400 });
@@ -163,9 +177,36 @@ Keep it to 3–4 sentences. Warm, sharp, no fluff. No lists or headers — just 
     memoryNote,
   ].filter(Boolean).join("\n\n");
 
+  let userContent = message;
+  if (agentKey === "marcus" && attachments.length > 0) {
+    const docs = await Promise.all(
+      attachments.slice(0, 5).map(async (a) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data } = await (supabase as any).rpc("get_marcus_document", {
+          p_document_id: a.document_id,
+          p_user_id: user.id,
+        });
+        const row = data as null | {
+          id: string;
+          original_filename: string;
+          mime_type: string;
+          page_count: number | null;
+          parsed_text_preview: string | null;
+        };
+        if (!row) return null;
+        const pages = row.page_count ? `, ${row.page_count} pages` : "";
+        return `[Attached document "${row.original_filename}" — id: ${row.id} — ${row.mime_type}${pages}]\nFirst characters of the parsed text:\n${row.parsed_text_preview ?? "(empty)"}`;
+      })
+    );
+    const blocks = docs.filter((d): d is string => Boolean(d));
+    if (blocks.length) {
+      userContent = `${blocks.join("\n\n")}\n\n---\n${message}`;
+    }
+  }
+
   const initialMessages: Anthropic.MessageParam[] = [
     ...historyMessages,
-    { role: "user", content: message },
+    { role: "user", content: userContent },
   ];
 
   const encoder = new TextEncoder();

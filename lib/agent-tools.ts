@@ -35,6 +35,7 @@ import { checkDesktopSessionLimit } from "./tools/desktopRateLimit";
 import * as crm from "./tools/crm";
 import { lookupLinkedInProfile, formatLinkedInProfile } from "./tools/linkedin";
 import * as github from "./tools/github";
+import * as legal from "./tools/legal";
 
 export type ToolContext = {
   supabase: SupabaseClient;
@@ -371,6 +372,120 @@ const GITHUB_GET_PULL: Anthropic.Tool = {
       number: { type: "integer", description: "Pull request number" },
     },
     required: ["owner", "repo", "number"],
+  },
+};
+
+// ─── Marcus — legal-specialised tools ───────────────────────────────────────
+
+const ANALYZE_DOCUMENT: Anthropic.Tool = {
+  name: "analyze_document",
+  description:
+    "Parse a PDF or DOCX the user attached to this conversation and return the full extracted text plus a structural summary (section markers, party indicators, dates). Use this BEFORE review_contract or any commentary on a document. Input is a document_id surfaced by the chat attachment block — never ask the user to paste the file contents themselves.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      document_id: {
+        type: "string",
+        description:
+          "UUID of the marcus_documents row, surfaced in the [Attached document …] block of the user message.",
+      },
+    },
+    required: ["document_id"],
+  },
+};
+
+const REVIEW_CONTRACT: Anthropic.Tool = {
+  name: "review_contract",
+  description:
+    "Run a structured legal-risk pass over a previously-parsed document. Returns the document text plus a category checklist YOU must fill out: document type, parties, effective date / term, renewal & termination, financial obligations, payment terms, scope, IP, confidentiality, data handling, warranties, indemnification, limitation of liability, insurance, governing law, dispute resolution, assignment & change of control, force majeure, notices, severability. Each category requires (1) inline verbatim quote, (2) plain-language risk, (3) HIGH/MEDIUM/LOW tag, (4) proposed redline. Close with a TOP RISKS section and the not-legal-advice disclaimer.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      document_id: {
+        type: "string",
+        description: "UUID of the marcus_documents row to review.",
+      },
+    },
+    required: ["document_id"],
+  },
+};
+
+const DRAFT_LEGAL_DOCUMENT: Anthropic.Tool = {
+  name: "draft_legal_document",
+  description:
+    "Generate a downloadable legal document (default docx). Provides a per-document-type scaffold and returns a 24h signed link. Always verify jurisdiction, parties, and headline economics first — ask 2–3 clarifying questions if any are missing. The not-legal-advice disclaimer is injected automatically. Supported document_types: nda_mutual, nda_one_way, terms_of_service, marketplace_terms_of_service, privacy_policy, msa, founder_agreement, contractor_agreement, employment_offer_letter.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      document_type: {
+        type: "string",
+        enum: [
+          "nda_mutual",
+          "nda_one_way",
+          "terms_of_service",
+          "marketplace_terms_of_service",
+          "privacy_policy",
+          "msa",
+          "founder_agreement",
+          "contractor_agreement",
+          "employment_offer_letter",
+        ],
+      },
+      parties: {
+        type: "array",
+        description:
+          "Each party with full legal name (required) and optional role + address.",
+        items: {
+          type: "object" as const,
+          properties: {
+            name: { type: "string" },
+            role: {
+              type: "string",
+              description: "e.g. 'Operator', 'Seller', 'Disclosing Party'",
+            },
+            address: { type: "string" },
+          },
+          required: ["name"],
+        },
+      },
+      jurisdiction: {
+        type: "string",
+        description:
+          "Governing law jurisdiction, e.g. 'Delaware, USA' or 'England & Wales'.",
+      },
+      key_terms: {
+        type: "object" as const,
+        description:
+          "Free-form bag of deal-specific terms — fees, term length, scope, exclusivity, termination rights, etc. Marcus uses these to fill the scaffold.",
+      },
+      format: {
+        type: "string",
+        enum: ["docx", "pdf"],
+        description: "Default docx.",
+      },
+      title: {
+        type: "string",
+        description: "Optional override for the document title and filename.",
+      },
+    },
+    required: ["document_type", "parties", "jurisdiction", "key_terms"],
+  },
+};
+
+const FLAG_LEGAL_RISKS: Anthropic.Tool = {
+  name: "flag_legal_risks",
+  description:
+    "Free-form legal-risk analysis for a described business activity or a single contract clause. Returns a markdown checklist Marcus fills in covering contract & commercial, IP, employment, privacy (GDPR/CCPA), consumer protection, securities & fundraising, tax, regulatory, anti-trust, marketing claims, and dispute exposure. Use when the user describes a new offering, market, clause, or hypothetical and wants a triaged risk picture before drafting. Markdown output only — no file.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      activity_description: {
+        type: "string",
+        description:
+          "Plain-language description of the activity or clause to analyze. Be specific: include geography, parties, money flow, and data flow if relevant.",
+      },
+    },
+    required: ["activity_description"],
   },
 };
 
@@ -1073,13 +1188,21 @@ const GITHUB_TOOLS = [
 
 const KAI_TOOLS = [...ALL_TOOLS, EXECUTE_CODE, ...GITHUB_TOOLS];
 
-// AGENT_TOOLS: used in /api/chat — Alex gets Gmail+Calendar; Dana gets Gmail; Kai gets execute_code + GitHub; Jeremy gets Stripe + Sheets + P&L
+const MARCUS_LEGAL_TOOLS = [
+  ANALYZE_DOCUMENT,
+  REVIEW_CONTRACT,
+  DRAFT_LEGAL_DOCUMENT,
+  FLAG_LEGAL_RISKS,
+];
+const MARCUS_TOOLS = [...ALL_TOOLS, ...MARCUS_LEGAL_TOOLS];
+
+// AGENT_TOOLS: used in /api/chat — Alex gets Gmail+Calendar; Dana gets Gmail; Kai gets execute_code + GitHub; Jeremy gets Stripe + Sheets + P&L; Marcus gets legal tools
 export const AGENT_TOOLS: Partial<Record<AgentKey, Anthropic.Tool[]>> = {
   alex:   ALEX_TOOLS,
   jeremy: JEREMY_TOOLS,
   kai:    KAI_TOOLS,
   dana:   DANA_TOOLS,
-  marcus: ALL_TOOLS,
+  marcus: MARCUS_TOOLS,
   maya:   MAYA_TOOLS,
 };
 
@@ -1089,7 +1212,7 @@ export const TASK_AGENT_TOOLS: Partial<Record<AgentKey, Anthropic.Tool[]>> = {
   jeremy: JEREMY_TOOLS,
   kai:    KAI_TOOLS,
   dana:   DANA_TOOLS,
-  marcus: ALL_TOOLS,
+  marcus: MARCUS_TOOLS,
   maya:   MAYA_TOOLS,
 };
 
@@ -1147,6 +1270,10 @@ export const TOOL_LABELS: Record<string, string> = {
   crm_pipeline_summary:        "Summarizing pipeline...",
   crm_log_activity:            "Logging activity...",
   linkedin_lookup_profile:     "Looking up LinkedIn profile...",
+  analyze_document:            "Parsing document...",
+  review_contract:             "Reviewing contract...",
+  draft_legal_document:        "Drafting legal document...",
+  flag_legal_risks:            "Analyzing legal risks...",
 };
 
 // ─── Content-to-text helpers (used so file content is saved in result) ───────
@@ -2051,6 +2178,150 @@ async function runAgentTool(
           input.repo as string,
           Number(input.number)
         );
+
+      // ─── Marcus — legal tools ──────────────────────────────────────────
+      case "analyze_document": {
+        const docTier = await getUserTier(context.supabase, context.userId);
+        if (docTier === "free") {
+          return "TOOL_ERROR: Document analysis requires a Solo plan or higher. Upgrade at knetc.team/pricing. STOP. Do not retry.";
+        }
+        const documentId = ((input.document_id as string) ?? "").trim();
+        if (!documentId) return "TOOL_ERROR: document_id is required. STOP.";
+        try {
+          return await legal.analyzeDocumentForAgent(
+            context.supabase,
+            context.userId,
+            documentId
+          );
+        } catch (err) {
+          if (err instanceof legal.MarcusDocumentNotFoundError) {
+            return `TOOL_ERROR: ${err.message} The user must attach the document via the paperclip in chat first. STOP. Do not retry.`;
+          }
+          throw err;
+        }
+      }
+
+      case "review_contract": {
+        const reviewTier = await getUserTier(context.supabase, context.userId);
+        if (reviewTier === "free") {
+          return "TOOL_ERROR: Contract review requires a Solo plan or higher. Upgrade at knetc.team/pricing. STOP. Do not retry.";
+        }
+        const documentId = ((input.document_id as string) ?? "").trim();
+        if (!documentId) return "TOOL_ERROR: document_id is required. STOP.";
+        try {
+          return await legal.reviewContractForAgent(
+            context.supabase,
+            context.userId,
+            documentId
+          );
+        } catch (err) {
+          if (err instanceof legal.MarcusDocumentNotFoundError) {
+            return `TOOL_ERROR: ${err.message} STOP. Do not retry.`;
+          }
+          throw err;
+        }
+      }
+
+      case "draft_legal_document": {
+        const draftTier = await getUserTier(context.supabase, context.userId);
+        if (draftTier === "free") {
+          return "TOOL_ERROR: Legal-document drafting requires a Solo plan or higher. Upgrade at knetc.team/pricing. STOP. Do not retry.";
+        }
+        const documentType = input.document_type as legal.LegalDocumentType;
+        const partiesIn = input.parties as
+          | Array<{ name?: string; role?: string; address?: string }>
+          | undefined;
+        const jurisdiction = ((input.jurisdiction as string) ?? "").trim();
+        const keyTerms = (input.key_terms ?? {}) as Record<string, unknown>;
+        const format = (input.format as "docx" | "pdf" | undefined) ?? "docx";
+        const title = ((input.title as string) ?? "").trim() || undefined;
+
+        const allowedTypes: legal.LegalDocumentType[] = [
+          "nda_mutual",
+          "nda_one_way",
+          "terms_of_service",
+          "marketplace_terms_of_service",
+          "privacy_policy",
+          "msa",
+          "founder_agreement",
+          "contractor_agreement",
+          "employment_offer_letter",
+        ];
+        if (!documentType || !allowedTypes.includes(documentType)) {
+          return `TOOL_ERROR: invalid document_type. Allowed: ${allowedTypes.join(", ")}. STOP.`;
+        }
+        if (!Array.isArray(partiesIn) || partiesIn.length === 0) {
+          return "TOOL_ERROR: parties array is required and must include at least one named party. STOP.";
+        }
+        const parties = partiesIn
+          .map((p) => ({
+            name: (p.name ?? "").trim(),
+            role: p.role?.trim(),
+            address: p.address?.trim(),
+          }))
+          .filter((p) => p.name);
+        if (parties.length === 0) {
+          return "TOOL_ERROR: every party entry must include a non-empty name. STOP.";
+        }
+        if (!jurisdiction) {
+          return "TOOL_ERROR: jurisdiction is required. STOP.";
+        }
+        if (!["docx", "pdf"].includes(format)) {
+          return `TOOL_ERROR: format must be docx or pdf. STOP.`;
+        }
+
+        try {
+          const result = await legal.draftLegalDocumentForAgent(context.userId, {
+            documentType,
+            parties,
+            jurisdiction,
+            keyTerms,
+            format,
+            title,
+          });
+          const kb = Math.round(result.sizeBytes / 1024);
+          const sizeLabel = kb < 1024 ? `${kb} KB` : `${(kb / 1024).toFixed(1)} MB`;
+
+          // Save text rendering for get_agent_output, fire-and-forget.
+          void (async () => {
+            try {
+              const textContent = sectionsToText(result.scaffold.sections);
+              if (textContent) {
+                const { error } = await context.supabase
+                  .from("agent_file_contents")
+                  .insert({
+                    user_id: context.userId,
+                    title: result.filename,
+                    format,
+                    text_content: textContent,
+                  });
+                if (error)
+                  console.error("[draft_legal_document] content save failed", {
+                    error: error.message,
+                  });
+              }
+            } catch (err) {
+              console.error("[draft_legal_document] content save threw", {
+                error: String(err),
+              });
+            }
+          })();
+
+          return `Legal document drafted (${sizeLabel}). Include this exact markdown link verbatim in your response so the user can download it:\n[${result.filename}](${result.signedUrl})\n\nYou MUST include the markdown link above verbatim. Do not summarise or paraphrase it. The not-legal-advice disclaimer is built into the document.`;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error("[draft_legal_document] failed", { documentType, error: msg });
+          return `TOOL_ERROR: Drafting failed: "${msg}". STOP. Do not retry. Tell the user the draft failed and offer to paste the body inline instead.`;
+        }
+      }
+
+      case "flag_legal_risks": {
+        const description = ((input.activity_description as string) ?? "").trim();
+        if (!description) return "TOOL_ERROR: activity_description is required. STOP.";
+        if (description.length > 8000)
+          return "TOOL_ERROR: activity_description too long (max 8000 chars). STOP.";
+        return legal.flagLegalRisksScaffold(description);
+      }
 
     default:
       return `Unknown tool: ${name}`;
