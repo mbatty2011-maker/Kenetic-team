@@ -12,6 +12,8 @@ import { logActivity, type AgentName, type ActivityContext } from "./tools/activ
 import * as gmail from "./tools/gmail";
 import * as calendar from "./tools/calendar";
 import { GoogleNotConnectedError } from "./tools/google-auth";
+import { runDesktopTool } from "./tools/desktopRun";
+import { checkDesktopSessionLimit } from "./tools/desktopRateLimit";
 
 export type ToolContext = {
   supabase: SupabaseClient;
@@ -191,6 +193,23 @@ const EXECUTE_CODE: Anthropic.Tool = {
       },
     },
     required: ["code", "language"],
+  },
+};
+
+const USE_DESKTOP: Anthropic.Tool = {
+  name: "use_desktop",
+  description:
+    "Spin up an isolated Linux desktop with a real browser to complete tasks that require visiting a website, clicking, scrolling, filling forms, or reading rendered pages that web_search can't see (interactive widgets, paywalls, JS-only content, multi-step flows). The user watches the desktop live in their chat. Use sparingly — sessions cost money and take ~30s to start. Do NOT use for tasks doable via web_search. Never visit pages requiring login, banking sites, or anything with credentials. The session terminates automatically when the task is complete.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      task: {
+        type: "string",
+        description:
+          "Plain-language description of what should happen on the desktop. Be specific about the goal AND the success criteria. Example: 'Open weather.gov, search for San Francisco, and report tomorrow's high temperature.'",
+      },
+    },
+    required: ["task"],
   },
 };
 
@@ -490,7 +509,7 @@ const ALL_TOOLS = [CREATE_FILE, WEB_SEARCH, SEND_EMAIL, DRAFT_EMAIL, APPEND_TO_K
 
 const MAYA_TOOLS = [CREATE_FILE, WEB_SEARCH, APPEND_TO_KB, GET_AGENT_OUTPUT];
 
-const ALEX_TOOLS = [...ALL_TOOLS, ...GMAIL_TOOLS, ...CALENDAR_TOOLS];
+const ALEX_TOOLS = [...ALL_TOOLS, ...GMAIL_TOOLS, ...CALENDAR_TOOLS, USE_DESKTOP];
 const DANA_TOOLS = [...ALL_TOOLS, ...GMAIL_TOOLS];
 
 // AGENT_TOOLS: used in /api/chat — Alex gets Gmail+Calendar; Dana gets Gmail; Kai also gets propose_ssh + execute_code
@@ -524,6 +543,7 @@ export const TOOL_LABELS: Record<string, string> = {
   propose_ssh_command:      "Proposing Pi command...",
   run_ssh_command:          "Running command on Pi...",
   execute_code:             "Running code...",
+  use_desktop:              "Opening desktop session...",
   gmail_search_threads:     "Searching Gmail...",
   gmail_get_thread:         "Reading Gmail thread...",
   gmail_create_draft:       "Creating Gmail draft...",
@@ -755,6 +775,28 @@ async function runAgentTool(
         if (result.results) parts.push(`output:\n${result.results}`);
         if (result.error) parts.push(`error:\n${result.error}`);
         return parts.length > 0 ? parts.join("\n\n") : "(no output)";
+      }
+
+      case "use_desktop": {
+        const task = ((input.task as string) ?? "").trim();
+        if (!task) return "TOOL_ERROR: task is required. STOP.";
+        if (task.length > 2000) return "TOOL_ERROR: task too long (max 2000 chars). STOP.";
+
+        const limit = await checkDesktopSessionLimit(context.supabase, context.userId);
+        if (!limit.ok) return limit.reason;
+
+        const run = await runDesktopTool({
+          supabase: context.supabase,
+          userId: context.userId,
+          conversationId: context.conversationId,
+          alexJobId: context.jobId,
+          task,
+        });
+
+        // Surface the computerJobId in the tool result so Alex can reference
+        // the session and so a downstream UI step (the inline panel marker the
+        // worker writes to alex_jobs.steps) can correlate.
+        return `Desktop session ${run.computerJobId} finished. Result:\n${run.result}`;
       }
 
       case "get_agent_output": {

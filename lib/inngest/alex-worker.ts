@@ -54,7 +54,7 @@ CRITICAL RULES:
 
 type JobStep = {
   timestamp: string;
-  type: "thinking" | "tool_call" | "specialist" | "specialist_done" | "warning" | "done" | "error";
+  type: "thinking" | "tool_call" | "specialist" | "specialist_done" | "warning" | "done" | "error" | "desktop_session";
   summary: string;
   detail?: string;
 };

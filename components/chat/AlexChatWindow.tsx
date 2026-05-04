@@ -9,6 +9,7 @@ import TypingIndicator from "./TypingIndicator";
 import ChatInput from "./ChatInput";
 import AgentHeader from "./AgentHeader";
 import SynthesisCard from "./SynthesisCard";
+import DesktopSessionPanel from "./DesktopSessionPanel";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
 interface Message {
@@ -27,7 +28,7 @@ interface SynthesisData {
 
 interface JobStep {
   timestamp: string;
-  type: "thinking" | "tool_call" | "specialist" | "specialist_done" | "warning" | "done" | "error";
+  type: "thinking" | "tool_call" | "specialist" | "specialist_done" | "warning" | "done" | "error" | "desktop_session";
   summary: string;
   detail?: string;
 }
@@ -68,7 +69,13 @@ function JobProgressBubble({
   }, [job.status]);
 
   const isActive = job.status === "queued" || job.status === "running";
-  const visibleSteps = job.steps.filter((s) => s.type !== "thinking" || isActive);
+
+  // Pull desktop_session steps out of the standard list — they render as
+  // their own wider DesktopSessionPanel block, not as one-line step rows.
+  const desktopSteps = job.steps.filter((s) => s.type === "desktop_session");
+  const visibleSteps = job.steps.filter(
+    (s) => s.type !== "desktop_session" && (s.type !== "thinking" || isActive),
+  );
 
   const monoStyle = { fontFamily: "var(--font-space-mono), monospace" };
 
@@ -78,7 +85,7 @@ function JobProgressBubble({
         {alex.initials}
       </div>
 
-      <div className="max-w-[85%] space-y-1.5">
+      <div className={`${desktopSteps.length > 0 ? "max-w-[95%] w-full" : "max-w-[85%]"} space-y-1.5`}>
         {/* Status badge */}
         <div className="flex items-center gap-2">
           {isActive && (
@@ -124,6 +131,14 @@ function JobProgressBubble({
               </div>
             )}
           </div>
+        )}
+
+        {/* Inline desktop session panel(s) — rendered separately because they
+            need more vertical space (live VNC iframe) than a step row allows */}
+        {desktopSteps.map((step, i) =>
+          step.detail ? (
+            <DesktopSessionPanel key={`desktop-${i}-${step.detail}`} jobId={step.detail} />
+          ) : null,
         )}
 
         {/* Error state */}
