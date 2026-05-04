@@ -244,7 +244,8 @@ export default function DesktopSessionPanel({ jobId }: { jobId: string }) {
                     src={job.stream_url}
                     className="absolute inset-0 w-full h-full border-0"
                     allow=""
-                    sandbox="allow-scripts allow-forms"
+                    sandbox="allow-scripts allow-same-origin allow-forms"
+                    referrerPolicy="no-referrer-when-downgrade"
                     title="Live desktop"
                   />
                   <div className="absolute top-2 right-2 bg-black/70 text-white text-[10px] px-2 py-0.5 pointer-events-none select-none border border-white/20" style={monoStyle}>
