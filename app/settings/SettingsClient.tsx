@@ -21,6 +21,15 @@ interface KnowledgeBaseEntry {
   created_at: string;
 }
 
+interface BrandProfileForm {
+  brand_voice: string;
+  target_audience: string;
+  value_propositions: string;
+  mission: string;
+  taglines: string;
+  dos_and_donts: string;
+}
+
 interface GoogleConnection {
   connected: boolean;
   email?: string;
@@ -49,6 +58,17 @@ export default function SettingsPage() {
   const [toast, setToast] = useState("");
   const [showFeedback, setShowFeedback] = useState(false);
   const [kbEntries, setKbEntries] = useState<KnowledgeBaseEntry[]>([]);
+  const [brand, setBrand] = useState<BrandProfileForm>({
+    brand_voice: "",
+    target_audience: "",
+    value_propositions: "",
+    mission: "",
+    taglines: "",
+    dos_and_donts: "",
+  });
+  const [savingBrand, setSavingBrand] = useState(false);
+  const [savedBrand, setSavedBrand] = useState(false);
+  const [brandMoreOpen, setBrandMoreOpen] = useState(false);
   const [deleteState, setDeleteState] = useState<"idle" | "confirm" | "deleting">("idle");
   const [google, setGoogle] = useState<GoogleConnection>({ connected: false });
   const [disconnectingGoogle, setDisconnectingGoogle] = useState(false);
@@ -153,6 +173,26 @@ export default function SettingsPage() {
       .eq("user_id", user.id)
       .order("created_at", { ascending: true });
     setKbEntries((kbData as KnowledgeBaseEntry[]) ?? []);
+
+    const { data: brandData } = await supabase
+      .from("brand_profiles")
+      .select("*")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (brandData) {
+      const b = brandData as Record<string, unknown>;
+      setBrand({
+        brand_voice:        (b.brand_voice as string) ?? "",
+        target_audience:    (b.target_audience as string) ?? "",
+        value_propositions: (b.value_propositions as string) ?? "",
+        mission:            (b.mission as string) ?? "",
+        taglines:           (b.taglines as string) ?? "",
+        dos_and_donts:      (b.dos_and_donts as string) ?? "",
+      });
+      if ((b.mission as string) || (b.taglines as string) || (b.dos_and_donts as string)) {
+        setBrandMoreOpen(true);
+      }
+    }
   }
 
   async function saveProfile() {
@@ -175,6 +215,25 @@ export default function SettingsPage() {
       setTimeout(() => setSaved(false), 2000);
     } else {
       console.error("Profile save error:", error);
+      showToast(`Save failed: ${error.message}`);
+    }
+  }
+
+  async function saveBrand() {
+    setSavingBrand(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setSavingBrand(false); return; }
+
+    const { error } = await supabase
+      .from("brand_profiles")
+      .upsert({ user_id: user.id, ...brand }, { onConflict: "user_id" });
+
+    setSavingBrand(false);
+    if (!error) {
+      setSavedBrand(true);
+      setTimeout(() => setSavedBrand(false), 2000);
+    } else {
+      console.error("Brand save error:", error);
       showToast(`Save failed: ${error.message}`);
     }
   }
@@ -354,6 +413,96 @@ export default function SettingsPage() {
               </span>
               <button onClick={saveProfile} disabled={saving} className={saveBtn} style={monoStyle}>
                 {saved ? "Saved ✓" : saving ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* Brand */}
+        <section>
+          <h2 className="text-white/40 text-xs font-bold uppercase tracking-widest px-1 mb-1" style={monoStyle}>
+            Brand
+          </h2>
+          <p className="text-white/30 text-xs px-1 mb-3" style={monoStyle}>
+            Maya uses this in every deliverable — voice, audience, and core messaging anchor all copy she writes.
+          </p>
+          <div className="border border-white">
+            <div className="divide-y divide-white/10">
+              <div className="px-4 py-3">
+                <label className={labelClass} style={monoStyle}>Brand Voice</label>
+                <textarea
+                  value={brand.brand_voice}
+                  onChange={(e) => setBrand({ ...brand, brand_voice: e.target.value })}
+                  placeholder="Direct, dry, no jargon. Confident without bragging."
+                  rows={6}
+                  className="w-full bg-transparent text-white text-sm focus:outline-none resize-none leading-relaxed placeholder:text-white/20"
+                />
+              </div>
+              <div className="px-4 py-3">
+                <label className={labelClass} style={monoStyle}>Target Audience</label>
+                <textarea
+                  value={brand.target_audience}
+                  onChange={(e) => setBrand({ ...brand, target_audience: e.target.value })}
+                  placeholder="Solo founders & seed-stage CEOs running ops without a marketing hire."
+                  rows={4}
+                  className="w-full bg-transparent text-white text-sm focus:outline-none resize-none leading-relaxed placeholder:text-white/20"
+                />
+              </div>
+              <div className="px-4 py-3">
+                <label className={labelClass} style={monoStyle}>Value Propositions</label>
+                <textarea
+                  value={brand.value_propositions}
+                  onChange={(e) => setBrand({ ...brand, value_propositions: e.target.value })}
+                  placeholder={`What you do for them, in 2–4 short lines.\n— Replace 5 hires with 1 chat.\n— Real deliverables, not advice.`}
+                  rows={6}
+                  className="w-full bg-transparent text-white text-sm focus:outline-none resize-none leading-relaxed placeholder:text-white/20"
+                />
+              </div>
+              {brandMoreOpen && (
+                <>
+                  <div className="px-4 py-3">
+                    <label className={labelClass} style={monoStyle}>Mission</label>
+                    <textarea
+                      value={brand.mission}
+                      onChange={(e) => setBrand({ ...brand, mission: e.target.value })}
+                      placeholder="What you're trying to do in the world."
+                      rows={3}
+                      className="w-full bg-transparent text-white text-sm focus:outline-none resize-none leading-relaxed placeholder:text-white/20"
+                    />
+                  </div>
+                  <div className="px-4 py-3">
+                    <label className={labelClass} style={monoStyle}>Taglines</label>
+                    <textarea
+                      value={brand.taglines}
+                      onChange={(e) => setBrand({ ...brand, taglines: e.target.value })}
+                      placeholder="Short repeatable lines used across surfaces."
+                      rows={3}
+                      className="w-full bg-transparent text-white text-sm focus:outline-none resize-none leading-relaxed placeholder:text-white/20"
+                    />
+                  </div>
+                  <div className="px-4 py-3">
+                    <label className={labelClass} style={monoStyle}>Do&apos;s &amp; Don&apos;ts</label>
+                    <textarea
+                      value={brand.dos_and_donts}
+                      onChange={(e) => setBrand({ ...brand, dos_and_donts: e.target.value })}
+                      placeholder={`DO: lowercase headlines, em-dashes for asides.\nDON'T: exclamation marks, "revolutionary", "synergy".`}
+                      rows={5}
+                      className="w-full bg-transparent text-white text-sm focus:outline-none resize-none leading-relaxed placeholder:text-white/20"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="px-4 py-3 border-t border-white/10 flex items-center justify-between gap-3">
+              <button
+                onClick={() => setBrandMoreOpen((o) => !o)}
+                className="text-white/40 hover:text-white text-xs uppercase tracking-widest transition-colors"
+                style={monoStyle}
+              >
+                {brandMoreOpen ? "− Hide optional" : "+ More fields"}
+              </button>
+              <button onClick={saveBrand} disabled={savingBrand} className={saveBtn} style={monoStyle}>
+                {savedBrand ? "Saved ✓" : savingBrand ? "Saving..." : "Save"}
               </button>
             </div>
           </div>

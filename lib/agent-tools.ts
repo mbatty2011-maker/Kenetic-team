@@ -4,6 +4,7 @@ import type { AgentKey } from "./agents";
 import { tavilySearch, formatSearchResults } from "./tools/search";
 import { sendEmail, draftEmail } from "./tools/email";
 import { appendToKnowledgeBase } from "./tools/knowledge";
+import { upsertBrandProfile, BRAND_FIELDS } from "./tools/brand";
 import { executeCode } from "./tools/codeExecution";
 import type { DocumentSection, XlsxSheet } from "./files/types";
 import { uploadAgentFile, sanitizeFilename } from "./files/upload";
@@ -181,6 +182,23 @@ const APPEND_TO_KB: Anthropic.Tool = {
       content: { type: "string", description: "Section content to append" },
     },
     required: ["section_title", "content"],
+  },
+};
+
+const UPDATE_BRAND_PROFILE: Anthropic.Tool = {
+  name: "update_brand_profile",
+  description:
+    "Persist or update the user's brand profile fields. Each field is independently updatable — only include the fields you want to set or replace. Use after onboarding discovery, or whenever the user clarifies positioning. Do NOT call this just to acknowledge; only call when you have new content to save.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      brand_voice:        { type: "string", description: "Personality and tone — how the brand sounds (e.g. 'direct, dry, no jargon')" },
+      target_audience:    { type: "string", description: "Who the brand is talking to — demographic + psychographic" },
+      value_propositions: { type: "string", description: "Why customers should care — core benefit messaging" },
+      mission:            { type: "string", description: "What the company is trying to do in the world" },
+      taglines:           { type: "string", description: "Short repeatable lines used across surfaces" },
+      dos_and_donts:      { type: "string", description: "Brand language rules — what to always do, what to avoid" },
+    },
   },
 };
 
@@ -910,7 +928,7 @@ const LINKEDIN_TOOLS = [LINKEDIN_LOOKUP_PROFILE];
 
 const ALL_TOOLS = [CREATE_FILE, WEB_SEARCH, SEND_EMAIL, DRAFT_EMAIL, APPEND_TO_KB, GET_AGENT_OUTPUT];
 
-const MAYA_TOOLS = [CREATE_FILE, WEB_SEARCH, APPEND_TO_KB, GET_AGENT_OUTPUT];
+const MAYA_TOOLS = [CREATE_FILE, WEB_SEARCH, APPEND_TO_KB, GET_AGENT_OUTPUT, UPDATE_BRAND_PROFILE];
 
 const ALEX_TOOLS = [...ALL_TOOLS, ...GMAIL_TOOLS, ...CALENDAR_TOOLS, USE_DESKTOP];
 const DANA_TOOLS = [...ALL_TOOLS, ...GMAIL_TOOLS, ...CRM_TOOLS, ...LINKEDIN_TOOLS];
@@ -944,6 +962,7 @@ export const TOOL_LABELS: Record<string, string> = {
   send_email:               "Sending email...",
   draft_email:              "Drafting email...",
   append_to_knowledge_base: "Saving to knowledge base...",
+  update_brand_profile:     "Updating brand profile...",
   propose_ssh_command:      "Proposing Pi command...",
   run_ssh_command:          "Running command on Pi...",
   execute_code:             "Running code...",
@@ -1203,6 +1222,19 @@ async function runAgentTool(
       case "append_to_knowledge_base": {
         await appendToKnowledgeBase(context.supabase, context.userId, input.section_title as string, input.content as string);
         return `Section "${input.section_title}" saved to the Knowledge Base.`;
+      }
+
+      case "update_brand_profile": {
+        const patch: Record<string, string> = {};
+        for (const k of BRAND_FIELDS) {
+          const v = (input as Record<string, unknown>)[k];
+          if (typeof v === "string" && v.trim().length > 0) patch[k] = v.trim();
+        }
+        if (Object.keys(patch).length === 0) {
+          return "TOOL_ERROR: provide at least one non-empty field. STOP.";
+        }
+        await upsertBrandProfile(context.supabase, context.userId, patch);
+        return `Brand profile updated: ${Object.keys(patch).join(", ")}.`;
       }
 
       case "propose_ssh_command": {

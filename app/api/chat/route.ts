@@ -7,6 +7,7 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { SYSTEM_PROMPTS, type AgentKey } from "@/lib/agents";
 import { readKnowledgeBase } from "@/lib/tools/knowledge";
+import { readBrandProfile } from "@/lib/tools/brand";
 import { AGENT_TOOLS, executeAgentTool, TOOL_LABELS } from "@/lib/agent-tools";
 import { getUserContext, buildUserSection } from "@/lib/tools/user-context";
 import { checkDailyLimit } from "@/lib/rate-limit";
@@ -100,7 +101,7 @@ export async function POST(req: NextRequest) {
     ? new Date(Date.now() - memoryCutoffDays * 24 * 60 * 60 * 1000).toISOString()
     : null;
 
-  const [historyResult, knowledgeBase, userContext] = await Promise.all([
+  const [historyResult, knowledgeBase, userContext, brandProfile] = await Promise.all([
     memoryFrom
       ? supabase.from("messages").select("role, content")
           .eq("conversation_id", conversationId)
@@ -113,6 +114,7 @@ export async function POST(req: NextRequest) {
           .limit(20),
     readKnowledgeBase(supabase, user.id),
     getUserContext(supabase, user.id),
+    agentKey === "maya" ? readBrandProfile(supabase, user.id) : Promise.resolve(""),
   ]);
 
   const historyMessages = (historyResult.data ?? [])
@@ -152,6 +154,11 @@ Keep it to 3–4 sentences. Warm, sharp, no fluff. No lists or headers — just 
     SYSTEM_PROMPTS[agentKey],
     firstMessageInstruction,
     knowledgeBase ? `---\n## Knowledge Base (live)\n${knowledgeBase}\n---` : "",
+    agentKey === "maya"
+      ? (brandProfile
+          ? `---\n## Brand Profile (live)\n${brandProfile}\n---`
+          : `---\n## Brand Profile\n[empty — onboard the user before drafting copy]\n---`)
+      : "",
     userSection,
     memoryNote,
   ].filter(Boolean).join("\n\n");
