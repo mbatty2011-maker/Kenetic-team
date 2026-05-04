@@ -5,12 +5,10 @@ CREATE TABLE IF NOT EXISTS public.tasks (
   agent_key     TEXT        NOT NULL,
   title         TEXT        NOT NULL,
   status        TEXT        NOT NULL DEFAULT 'running',
-  -- status values: running | awaiting_confirmation | done | failed
+  -- status values: running | done | failed
   steps         JSONB       NOT NULL DEFAULT '[]',
   result        TEXT,
   error         TEXT,
-  pending_ssh   JSONB,
-  -- pending_ssh: { command, tool_use_id, messages } when awaiting_confirmation
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

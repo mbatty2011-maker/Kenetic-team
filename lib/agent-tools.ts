@@ -34,6 +34,7 @@ import { runDesktopTool } from "./tools/desktopRun";
 import { checkDesktopSessionLimit } from "./tools/desktopRateLimit";
 import * as crm from "./tools/crm";
 import { lookupLinkedInProfile, formatLinkedInProfile } from "./tools/linkedin";
+import * as github from "./tools/github";
 
 export type ToolContext = {
   supabase: SupabaseClient;
@@ -202,36 +203,174 @@ const UPDATE_BRAND_PROFILE: Anthropic.Tool = {
   },
 };
 
-const PROPOSE_SSH: Anthropic.Tool = {
-  name: "propose_ssh_command",
-  description:
-    "Propose an SSH command to run on the user's server. This DOES NOT execute anything — it shows the user the command so they can run it themselves or confirm. Always use this in chat instead of executing directly.",
-  input_schema: {
-    type: "object" as const,
-    properties: {
-      command: { type: "string", description: "The exact shell command" },
-      reason: { type: "string", description: "Why you want to run this" },
-      expected_output: { type: "string", description: "What output you expect and how to interpret it" },
-    },
-    required: ["command", "reason"],
-  },
-};
-
 const EXECUTE_CODE: Anthropic.Tool = {
   name: "execute_code",
   description:
-    "Execute Python or JavaScript code in a secure sandbox. Use this to test solutions before recommending them, debug algorithms, run data analysis, or validate that code works.",
+    "Execute Python or JavaScript in a fresh ephemeral sandbox to verify hypotheses, test snippets, run quick data analysis, parse output formats, or compute results. Each call gets a clean environment — no state persists between calls.\n\nPython: numpy, pandas, scipy, matplotlib, requests, beautifulsoup4, sympy, scikit-learn are pre-installed. Use Python by default for math, data, parsing, and ML work.\nJavaScript: Node 20 with the standard library. Use for JSON munging, regex experiments, or testing snippets you intend to ship in this codebase.\n\nHard limits: 60s execution timeout, 50,000 chars of code per call. Always prefer execute_code over speculation when verifying behavior.",
   input_schema: {
     type: "object" as const,
     properties: {
-      code: { type: "string", description: "The code to execute" },
+      code: {
+        type: "string",
+        description: "The exact code to execute. Must be self-contained — no state carries over between calls.",
+      },
       language: {
         type: "string",
         enum: ["python", "javascript"],
-        description: "The language to execute the code in",
+        description: "python (default for data/math/ML) or javascript (default for JSON/regex/Node experiments)",
       },
     },
     required: ["code", "language"],
+  },
+};
+
+// ─── GitHub tools (read-only) ────────────────────────────────────────────────
+
+const GITHUB_SEARCH_REPOS: Anthropic.Tool = {
+  name: "github_search_repos",
+  description:
+    "Search public GitHub repositories. Returns name, owner, description, stars, language, license, and URL. Read-only.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      query: { type: "string", description: "GitHub search query (e.g. 'topic:react language:typescript stars:>1000')" },
+      per_page: { type: "integer", description: "Max results (default 10, max 30)" },
+    },
+    required: ["query"],
+  },
+};
+
+const GITHUB_GET_REPO: Anthropic.Tool = {
+  name: "github_get_repo",
+  description:
+    "Fetch a repo's metadata: description, default branch, language, license, stars, topics, homepage, last push. Read-only.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      owner: { type: "string" },
+      repo: { type: "string" },
+    },
+    required: ["owner", "repo"],
+  },
+};
+
+const GITHUB_READ_FILE: Anthropic.Tool = {
+  name: "github_read_file",
+  description:
+    "Read the contents of a single file from a GitHub repo. Returns up to 200,000 chars (truncated if larger). Use this BEFORE recommending changes against a file the user references. Read-only.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      owner: { type: "string" },
+      repo: { type: "string" },
+      path: { type: "string", description: "Path relative to repo root (e.g. 'src/index.ts')" },
+      ref: { type: "string", description: "Branch, tag, or commit SHA (default: repo's default branch)" },
+    },
+    required: ["owner", "repo", "path"],
+  },
+};
+
+const GITHUB_LIST_DIR: Anthropic.Tool = {
+  name: "github_list_directory",
+  description:
+    "List files and subdirectories at a path inside a GitHub repo. Use to explore repo structure before reading files. Read-only.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      owner: { type: "string" },
+      repo: { type: "string" },
+      path: { type: "string", description: "Directory path relative to repo root. Empty string = repo root." },
+      ref: { type: "string", description: "Branch, tag, or commit SHA (default: repo's default branch)" },
+    },
+    required: ["owner", "repo", "path"],
+  },
+};
+
+const GITHUB_SEARCH_CODE: Anthropic.Tool = {
+  name: "github_search_code",
+  description:
+    "Search code across GitHub. Strongly recommend including a `repo:` or `org:` qualifier to scope (e.g. 'useState repo:vercel/next.js'). Read-only.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      query: { type: "string", description: "GitHub code search query — include repo:owner/name or org:owner to scope" },
+      per_page: { type: "integer", description: "Max results (default 10, max 30)" },
+    },
+    required: ["query"],
+  },
+};
+
+const GITHUB_LIST_COMMITS: Anthropic.Tool = {
+  name: "github_list_commits",
+  description:
+    "List recent commits in a repo, optionally scoped to a path. Returns SHA, author, date, and first line of commit message. Read-only.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      owner: { type: "string" },
+      repo: { type: "string" },
+      path: { type: "string", description: "Optional path to filter commits to that file" },
+      per_page: { type: "integer", description: "Max commits (default 10, max 30)" },
+    },
+    required: ["owner", "repo"],
+  },
+};
+
+const GITHUB_LIST_ISSUES: Anthropic.Tool = {
+  name: "github_list_issues",
+  description: "List issues in a repo (excludes PRs). Read-only.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      owner: { type: "string" },
+      repo: { type: "string" },
+      state: { type: "string", enum: ["open", "closed", "all"], description: "Default 'open'" },
+      per_page: { type: "integer", description: "Max issues (default 15, max 30)" },
+    },
+    required: ["owner", "repo"],
+  },
+};
+
+const GITHUB_GET_ISSUE: Anthropic.Tool = {
+  name: "github_get_issue",
+  description: "Fetch a single issue with its full body and comments. Read-only.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      owner: { type: "string" },
+      repo: { type: "string" },
+      number: { type: "integer", description: "Issue number" },
+    },
+    required: ["owner", "repo", "number"],
+  },
+};
+
+const GITHUB_LIST_PULLS: Anthropic.Tool = {
+  name: "github_list_pulls",
+  description: "List pull requests in a repo. Read-only.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      owner: { type: "string" },
+      repo: { type: "string" },
+      state: { type: "string", enum: ["open", "closed", "all"], description: "Default 'open'" },
+      per_page: { type: "integer", description: "Max PRs (default 15, max 30)" },
+    },
+    required: ["owner", "repo"],
+  },
+};
+
+const GITHUB_GET_PULL: Anthropic.Tool = {
+  name: "github_get_pull",
+  description: "Fetch a single pull request with its body, base/head refs, merge status, commit/diff stats, and a list of files changed. Read-only.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      owner: { type: "string" },
+      repo: { type: "string" },
+      number: { type: "integer", description: "Pull request number" },
+    },
+    required: ["owner", "repo", "number"],
   },
 };
 
@@ -249,21 +388,6 @@ const USE_DESKTOP: Anthropic.Tool = {
       },
     },
     required: ["task"],
-  },
-};
-
-
-const RUN_SSH: Anthropic.Tool = {
-  name: "run_ssh_command",
-  description:
-    "Execute a shell command on the user's server via SSH. The user must confirm before execution — the system will pause and ask for confirmation automatically.",
-  input_schema: {
-    type: "object" as const,
-    properties: {
-      command: { type: "string", description: "The exact shell command to run" },
-      reason: { type: "string", description: "Why you need to run this" },
-    },
-    required: ["command", "reason"],
   },
 };
 
@@ -934,21 +1058,36 @@ const ALEX_TOOLS = [...ALL_TOOLS, ...GMAIL_TOOLS, ...CALENDAR_TOOLS, USE_DESKTOP
 const DANA_TOOLS = [...ALL_TOOLS, ...GMAIL_TOOLS, ...CRM_TOOLS, ...LINKEDIN_TOOLS];
 const JEREMY_TOOLS = [...ALL_TOOLS, ...JEREMY_FINANCIAL_TOOLS];
 
-// AGENT_TOOLS: used in /api/chat — Alex gets Gmail+Calendar; Dana gets Gmail; Kai also gets propose_ssh + execute_code; Jeremy gets Stripe + Sheets + P&L
+const GITHUB_TOOLS = [
+  GITHUB_SEARCH_REPOS,
+  GITHUB_GET_REPO,
+  GITHUB_READ_FILE,
+  GITHUB_LIST_DIR,
+  GITHUB_SEARCH_CODE,
+  GITHUB_LIST_COMMITS,
+  GITHUB_LIST_ISSUES,
+  GITHUB_GET_ISSUE,
+  GITHUB_LIST_PULLS,
+  GITHUB_GET_PULL,
+];
+
+const KAI_TOOLS = [...ALL_TOOLS, EXECUTE_CODE, ...GITHUB_TOOLS];
+
+// AGENT_TOOLS: used in /api/chat — Alex gets Gmail+Calendar; Dana gets Gmail; Kai gets execute_code + GitHub; Jeremy gets Stripe + Sheets + P&L
 export const AGENT_TOOLS: Partial<Record<AgentKey, Anthropic.Tool[]>> = {
   alex:   ALEX_TOOLS,
   jeremy: JEREMY_TOOLS,
-  kai:    [...ALL_TOOLS, PROPOSE_SSH, EXECUTE_CODE],
+  kai:    KAI_TOOLS,
   dana:   DANA_TOOLS,
   marcus: ALL_TOOLS,
   maya:   MAYA_TOOLS,
 };
 
-// TASK_AGENT_TOOLS: used in /api/task — same but Kai gets run_ssh instead of propose_ssh
+// TASK_AGENT_TOOLS: used in /api/task — same as AGENT_TOOLS for Kai
 export const TASK_AGENT_TOOLS: Partial<Record<AgentKey, Anthropic.Tool[]>> = {
   alex:   ALEX_TOOLS,
   jeremy: JEREMY_TOOLS,
-  kai:    [...ALL_TOOLS, RUN_SSH, EXECUTE_CODE],
+  kai:    KAI_TOOLS,
   dana:   DANA_TOOLS,
   marcus: ALL_TOOLS,
   maya:   MAYA_TOOLS,
@@ -963,9 +1102,17 @@ export const TOOL_LABELS: Record<string, string> = {
   draft_email:              "Drafting email...",
   append_to_knowledge_base: "Saving to knowledge base...",
   update_brand_profile:     "Updating brand profile...",
-  propose_ssh_command:      "Proposing Pi command...",
-  run_ssh_command:          "Running command on Pi...",
   execute_code:             "Running code...",
+  github_search_repos:      "Searching GitHub repos...",
+  github_get_repo:          "Loading repo metadata...",
+  github_read_file:         "Reading file from GitHub...",
+  github_list_directory:    "Listing repo files...",
+  github_search_code:       "Searching code...",
+  github_list_commits:      "Loading commits...",
+  github_list_issues:       "Loading issues...",
+  github_get_issue:         "Reading issue...",
+  github_list_pulls:        "Loading pull requests...",
+  github_get_pull:          "Reading pull request...",
   use_desktop:              "Opening desktop session...",
   gmail_search_threads:     "Searching Gmail...",
   gmail_get_thread:         "Reading Gmail thread...",
@@ -1034,8 +1181,6 @@ function sheetsToText(sheets: XlsxSheet[]): string {
 }
 
 // ─── Tool execution ──────────────────────────────────────────────────────────
-
-export const SSH_CONFIRMATION_TOKEN = "SSH_CONFIRMATION_REQUIRED";
 
 export async function executeAgentTool(
   name: string,
@@ -1237,19 +1382,6 @@ async function runAgentTool(
         return `Brand profile updated: ${Object.keys(patch).join(", ")}.`;
       }
 
-      case "propose_ssh_command": {
-        return (
-          `SSH command proposed for review:\n` +
-          `\`\`\`bash\n${input.command}\n\`\`\`\n` +
-          `Reason: ${input.reason}\n` +
-          (input.expected_output ? `Expected: ${input.expected_output}` : "")
-        );
-      }
-
-      case "run_ssh_command": {
-        throw new Error("run_ssh_command must be intercepted by the task route before reaching executeAgentTool");
-      }
-
       case "execute_code": {
         const result = await executeCode(
           input.code as string,
@@ -1258,9 +1390,14 @@ async function runAgentTool(
         const parts: string[] = [];
         if (result.stdout) parts.push(`stdout:\n${result.stdout}`);
         if (result.stderr) parts.push(`stderr:\n${result.stderr}`);
-        if (result.results) parts.push(`output:\n${result.results}`);
+        if (result.results) parts.push(`return values:\n${result.results}`);
         if (result.error) parts.push(`error:\n${result.error}`);
-        return parts.length > 0 ? parts.join("\n\n") : "(no output)";
+        if (result.artifacts.length) {
+          const summary = result.artifacts.map((a) => `${a.kind} (${a.size} bytes)`).join(", ");
+          parts.push(`artifacts produced (not embedded — describe their content textually): ${summary}`);
+        }
+        parts.push(`(executed in ${result.durationMs}ms)`);
+        return parts.length > 1 ? parts.join("\n\n") : "(no output)";
       }
 
       case "use_desktop": {
@@ -1831,6 +1968,89 @@ async function runAgentTool(
         if (!result.ok) return `TOOL_ERROR: ${result.reason}. STOP.`;
         return formatLinkedInProfile(result.profile, result.cached);
       }
+
+      // ─── GitHub ────────────────────────────────────────────────────────
+      case "github_search_repos":
+        return github.searchRepos(
+          context.userId,
+          input.query as string,
+          Number(input.per_page ?? 10)
+        );
+
+      case "github_get_repo":
+        return github.getRepo(
+          context.userId,
+          input.owner as string,
+          input.repo as string
+        );
+
+      case "github_read_file":
+        return github.readFile(
+          context.userId,
+          input.owner as string,
+          input.repo as string,
+          input.path as string,
+          input.ref as string | undefined
+        );
+
+      case "github_list_directory":
+        return github.listDirectory(
+          context.userId,
+          input.owner as string,
+          input.repo as string,
+          input.path as string,
+          input.ref as string | undefined
+        );
+
+      case "github_search_code":
+        return github.searchCode(
+          context.userId,
+          input.query as string,
+          Number(input.per_page ?? 10)
+        );
+
+      case "github_list_commits":
+        return github.listCommits(
+          context.userId,
+          input.owner as string,
+          input.repo as string,
+          input.path as string | undefined,
+          Number(input.per_page ?? 10)
+        );
+
+      case "github_list_issues":
+        return github.listIssues(
+          context.userId,
+          input.owner as string,
+          input.repo as string,
+          (input.state as "open" | "closed" | "all" | undefined) ?? "open",
+          Number(input.per_page ?? 15)
+        );
+
+      case "github_get_issue":
+        return github.getIssue(
+          context.userId,
+          input.owner as string,
+          input.repo as string,
+          Number(input.number)
+        );
+
+      case "github_list_pulls":
+        return github.listPullRequests(
+          context.userId,
+          input.owner as string,
+          input.repo as string,
+          (input.state as "open" | "closed" | "all" | undefined) ?? "open",
+          Number(input.per_page ?? 15)
+        );
+
+      case "github_get_pull":
+        return github.getPullRequest(
+          context.userId,
+          input.owner as string,
+          input.repo as string,
+          Number(input.number)
+        );
 
     default:
       return `Unknown tool: ${name}`;

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import FeedbackModal from "@/components/chat/FeedbackModal";
 import StripeConnectModal from "@/components/settings/StripeConnectModal";
+import GitHubConnectModal from "@/components/settings/GitHubConnectModal";
 
 interface Profile {
   full_name: string;
@@ -39,6 +40,11 @@ interface StripeConnection {
   connected: boolean;
   account_label?: string | null;
   livemode?: boolean | null;
+}
+
+interface GitHubConnection {
+  connected: boolean;
+  account_label?: string | null;
 }
 
 export default function SettingsPage() {
@@ -75,6 +81,9 @@ export default function SettingsPage() {
   const [stripe, setStripe] = useState<StripeConnection>({ connected: false });
   const [disconnectingStripe, setDisconnectingStripe] = useState(false);
   const [showStripeModal, setShowStripeModal] = useState(false);
+  const [github, setGithub] = useState<GitHubConnection>({ connected: false });
+  const [disconnectingGithub, setDisconnectingGithub] = useState(false);
+  const [showGithubModal, setShowGithubModal] = useState(false);
 
   useEffect(() => {
     loadProfile();
@@ -118,6 +127,26 @@ export default function SettingsPage() {
   useEffect(() => {
     loadStripeStatus();
   }, [loadStripeStatus]);
+
+  const loadGithubStatus = useCallback(async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase as any).rpc("get_oauth_connection_status", {
+      p_provider: "github",
+    });
+    if (error) {
+      setGithub({ connected: false });
+      return;
+    }
+    const row = (data as { account_label?: string | null }[] | null)?.[0];
+    setGithub({
+      connected: !!row,
+      account_label: row?.account_label ?? null,
+    });
+  }, [supabase]);
+
+  useEffect(() => {
+    loadGithubStatus();
+  }, [loadGithubStatus]);
 
   // Surface OAuth callback outcomes (?google=connected|error) and clear the param.
   useEffect(() => {
@@ -306,6 +335,24 @@ export default function SettingsPage() {
       showToast(msg);
     } finally {
       setDisconnectingStripe(false);
+    }
+  }
+
+  async function disconnectGithub() {
+    setDisconnectingGithub(true);
+    try {
+      const res = await fetch("/api/integrations/github/disconnect", { method: "POST" });
+      if (!res.ok) {
+        const { error } = await res.json().catch(() => ({ error: "Disconnect failed" }));
+        throw new Error(error ?? "Disconnect failed");
+      }
+      setGithub({ connected: false });
+      showToast("GitHub disconnected");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Disconnect failed";
+      showToast(msg);
+    } finally {
+      setDisconnectingGithub(false);
     }
   }
 
@@ -625,6 +672,34 @@ export default function SettingsPage() {
                 </button>
               )}
             </div>
+            <div className="px-4 py-3.5 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-white text-sm">GitHub (read-only)</div>
+                <div className="text-white/40 text-xs truncate" style={monoStyle}>
+                  {github.connected
+                    ? `Connected as ${github.account_label ?? "your GitHub account"}`
+                    : "Not connected — Kai can read public repos anonymously; connect a PAT to read private repos and raise the rate limit"}
+                </div>
+              </div>
+              {github.connected ? (
+                <button
+                  onClick={disconnectGithub}
+                  disabled={disconnectingGithub}
+                  className="px-3 py-1.5 text-red-400 border border-red-500/40 text-xs font-bold uppercase tracking-widest hover:bg-red-950/30 transition-colors disabled:opacity-40"
+                  style={monoStyle}
+                >
+                  {disconnectingGithub ? "Disconnecting…" : "Disconnect"}
+                </button>
+              ) : (
+                <button
+                  onClick={() => setShowGithubModal(true)}
+                  className={saveBtn}
+                  style={monoStyle}
+                >
+                  Connect
+                </button>
+              )}
+            </div>
           </div>
         </section>
 
@@ -771,6 +846,12 @@ export default function SettingsPage() {
         <StripeConnectModal
           onClose={() => setShowStripeModal(false)}
           onConnected={loadStripeStatus}
+        />
+      )}
+      {showGithubModal && (
+        <GitHubConnectModal
+          onClose={() => setShowGithubModal(false)}
+          onConnected={loadGithubStatus}
         />
       )}
     </div>

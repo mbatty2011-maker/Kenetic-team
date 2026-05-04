@@ -13,7 +13,6 @@ interface Task {
   steps: TaskStep[];
   result: string | null;
   error: string | null;
-  pending_ssh: { command: string; reason: string } | null;
   created_at: string;
   updated_at: string;
 }
@@ -23,39 +22,38 @@ interface TaskStep {
   label: string;
   text?: string;
   tool?: string;
-  command?: string;
   timestamp: string;
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  running:               "bg-blue-100 text-blue-700",
-  awaiting_confirmation: "bg-amber-100 text-amber-700",
-  done:                  "bg-green-100 text-green-700",
-  failed:                "bg-red-100 text-red-700",
+  running: "bg-blue-100 text-blue-700",
+  done:    "bg-green-100 text-green-700",
+  failed:  "bg-red-100 text-red-700",
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  running:               "Running",
-  awaiting_confirmation: "Awaiting Confirmation",
-  done:                  "Done",
-  failed:                "Failed",
+  running: "Running",
+  done:    "Done",
+  failed:  "Failed",
 };
 
 const TOOL_ICONS: Record<string, string> = {
   web_search: "🔍", create_spreadsheet: "📊", read_spreadsheet: "📊",
   create_document: "📄", send_email: "📧", draft_email: "📧",
-  append_to_knowledge_base: "💾", run_ssh_command: "🖥️",
+  append_to_knowledge_base: "💾",
   execute_code: "⚙️",
+  github_search_repos: "🐙", github_get_repo: "🐙", github_read_file: "🐙",
+  github_list_directory: "🐙", github_search_code: "🐙", github_list_commits: "🐙",
+  github_list_issues: "🐙", github_get_issue: "🐙",
+  github_list_pulls: "🐙", github_get_pull: "🐙",
 };
 
 export default function TasksClient() {
   const supabase = createClient();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [selected, setSelected] = useState<Task | null>(null);
-  const [confirmingTask, setConfirmingTask] = useState<string | null>(null);
   const [cancellingTask, setCancellingTask] = useState<string | null>(null);
   const [retryingTask, setRetryingTask] = useState<string | null>(null);
-  const [resumeStatus, setResumeStatus] = useState<string>("");
   const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -83,49 +81,6 @@ export default function TasksClient() {
         if (updated) setSelected(updated as Task);
       }
     }
-  }
-
-  async function confirmSSH(taskId: string, confirmed: boolean) {
-    setConfirmingTask(taskId);
-    setResumeStatus(confirmed ? "Connecting to Pi..." : "Cancelling...");
-
-    try {
-      const res = await fetch(`/api/task/${taskId}/resume`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ confirmed }),
-      });
-
-      if (res.ok && res.body) {
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() ?? "";
-
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            try {
-              const event = JSON.parse(line.slice(6));
-              if (event.type === "complete" || event.type === "done") setResumeStatus("Task complete!");
-              if (event.type === "error") setResumeStatus("Error: " + event.message);
-            } catch {}
-          }
-        }
-
-        await loadTasks();
-      }
-    } catch (err) {
-      setResumeStatus("Resume failed: " + (err instanceof Error ? err.message : String(err)));
-    }
-
-    setConfirmingTask(null);
-    setTimeout(() => setResumeStatus(""), 3000);
   }
 
   async function cancelTask(taskId: string) {
@@ -321,36 +276,6 @@ export default function TasksClient() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-3 dark-scrollbar">
-              {/* SSH Confirmation card */}
-              {selected.status === "awaiting_confirmation" && selected.pending_ssh && (
-                <div className="border border-amber-200 bg-amber-50 rounded-apple-xl p-5 space-y-3">
-                  <p className="text-sm font-semibold text-amber-900">⚠️ SSH Command — Confirmation Required</p>
-                  {selected.pending_ssh.reason && (
-                    <p className="text-xs text-amber-700">{selected.pending_ssh.reason}</p>
-                  )}
-                  <pre className="text-xs font-mono bg-white border border-amber-200 rounded-apple-md px-3 py-2 text-apple-gray-950 overflow-x-auto">
-                    {selected.pending_ssh.command}
-                  </pre>
-                  {resumeStatus && <p className="text-xs text-apple-gray-500">{resumeStatus}</p>}
-                  <div className="flex gap-3">
-                    <button
-                      disabled={confirmingTask === selected.id}
-                      onClick={() => confirmSSH(selected.id, true)}
-                      className="flex-1 py-2.5 rounded-apple-lg bg-apple-gray-950 text-white text-sm font-semibold hover:bg-apple-gray-800 disabled:opacity-50 transition-colors"
-                    >
-                      {confirmingTask === selected.id ? "Running..." : "Confirm Execute on Pi"}
-                    </button>
-                    <button
-                      disabled={confirmingTask === selected.id}
-                      onClick={() => confirmSSH(selected.id, false)}
-                      className="flex-1 py-2.5 rounded-apple-lg bg-apple-gray-100 text-apple-gray-700 text-sm font-semibold hover:bg-apple-gray-200 disabled:opacity-50 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
-
               {/* Steps */}
               {(selected.steps ?? []).map((step, i) => (
                 <div key={i}>
@@ -373,11 +298,6 @@ export default function TasksClient() {
                     <div className="bg-green-50 border border-green-200 rounded-apple-xl px-4 py-4">
                       <p className="text-xs font-semibold text-green-800 mb-2">🎉 Task Complete</p>
                       <MarkdownContent content={step.text ?? ""} />
-                    </div>
-                  ) : step.type === "confirm_required" ? (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs">⚠️</span>
-                      <span className="text-xs font-medium text-amber-700">Paused — waiting for SSH confirmation</span>
                     </div>
                   ) : null}
                 </div>

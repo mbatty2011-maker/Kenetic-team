@@ -10,14 +10,7 @@ interface TaskStep {
   label: string;
   text?: string;
   tool?: string;
-  command?: string;
   timestamp: string;
-}
-
-interface ConfirmSSH {
-  task_id: string;
-  command: string;
-  reason?: string;
 }
 
 
@@ -29,9 +22,17 @@ const TOOL_ICONS: Record<string, string> = {
   send_email:               "📧",
   draft_email:              "📧",
   append_to_knowledge_base: "💾",
-  run_ssh_command:          "🖥️",
-  propose_ssh_command:      "🖥️",
   execute_code:             "⚙️",
+  github_search_repos:      "🐙",
+  github_get_repo:          "🐙",
+  github_read_file:         "🐙",
+  github_list_directory:    "🐙",
+  github_search_code:       "🐙",
+  github_list_commits:      "🐙",
+  github_list_issues:       "🐙",
+  github_get_issue:         "🐙",
+  github_list_pulls:        "🐙",
+  github_get_pull:          "🐙",
 };
 
 export default function NewTaskModal({ onClose }: { onClose: () => void }) {
@@ -40,7 +41,6 @@ export default function NewTaskModal({ onClose }: { onClose: () => void }) {
   const [phase, setPhase] = useState<"form" | "running" | "done" | "error">("form");
   const [steps, setSteps] = useState<TaskStep[]>([]);
   const [errorMsg, setErrorMsg] = useState("");
-  const [confirmSSH, setConfirmSSH] = useState<ConfirmSSH | null>(null);
   const stepsEndRef = useRef<HTMLDivElement>(null);
   const readerRef = useRef<ReadableStreamDefaultReader | null>(null);
   const mountedRef = useRef(true);
@@ -113,38 +113,6 @@ export default function NewTaskModal({ onClose }: { onClose: () => void }) {
       setPhase("done");
     } else if (event.type === "error") {
       setErrorMsg(event.message as string);
-      setPhase("error");
-    } else if (event.type === "confirm_ssh") {
-      setConfirmSSH({
-        task_id: event.task_id as string,
-        command: event.command as string,
-        reason: event.reason as string | undefined,
-      });
-    }
-  }
-
-  async function handleSSHConfirm(confirmed: boolean) {
-    if (!confirmSSH) return;
-    const taskId = confirmSSH.task_id;
-    setConfirmSSH(null);
-
-    if (!confirmed) {
-      setErrorMsg("SSH command cancelled.");
-      setPhase("error");
-      return;
-    }
-
-    try {
-      const res = await fetch(`/api/task/${taskId}/resume`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ confirmed: true }),
-      });
-
-      if (!res.ok || !res.body) throw new Error("Failed to resume task");
-      await consumeStream(res.body.getReader());
-    } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : "Resume failed");
       setPhase("error");
     }
   }
@@ -237,35 +205,7 @@ export default function NewTaskModal({ onClose }: { onClose: () => void }) {
               <StepRow key={i} step={step} />
             ))}
 
-            {/* SSH confirmation card */}
-            {confirmSSH && (
-              <div className="border border-amber-200 bg-amber-50 rounded-apple-lg p-4 space-y-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-amber-600 text-sm">⚠️</span>
-                  <span className="text-sm font-semibold text-amber-900">SSH Command Confirmation Required</span>
-                </div>
-                <p className="text-xs text-amber-700">{confirmSSH.reason}</p>
-                <pre className="text-xs font-mono bg-white border border-amber-200 rounded-apple-md px-3 py-2 text-apple-gray-950 overflow-x-auto">
-                  {confirmSSH.command}
-                </pre>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleSSHConfirm(true)}
-                    className="flex-1 py-2 rounded-apple-md bg-apple-gray-950 text-white text-xs font-semibold hover:bg-apple-gray-800 transition-colors"
-                  >
-                    Confirm Execute
-                  </button>
-                  <button
-                    onClick={() => handleSSHConfirm(false)}
-                    className="flex-1 py-2 rounded-apple-md bg-apple-gray-100 text-apple-gray-700 text-xs font-semibold hover:bg-apple-gray-200 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {phase === "running" && !confirmSSH && (
+            {phase === "running" && (
               <div className="flex items-center gap-2 py-1">
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="text-apple-gray-400 animate-spin flex-shrink-0" style={{ animationDuration: "1.5s" }}>
                   <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.5" strokeDasharray="14 8" />

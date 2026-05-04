@@ -12,6 +12,7 @@
     "@anthropic-ai/sdk": "^0.90.0",
     "@e2b/code-interpreter": "^2.4.0",
     "@e2b/desktop": "^2.2.2",
+    "@octokit/rest": "^22.0.1",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.104.0",
     "@vercel/analytics": "^2.0.1",
@@ -24,14 +25,12 @@
     "react": "^18",
     "react-dom": "^18",
     "resend": "^6.12.2",
-    "ssh2": "^1.17.0",
     "stripe": "^22.1.0"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
-    "@types/ssh2": "^1.15.5",
     "eslint": "^8",
     "eslint-config-next": "14.2.35",
     "postcss": "^8",

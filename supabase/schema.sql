@@ -93,7 +93,6 @@ create table if not exists tasks (
   steps jsonb not null default '[]',
   result text,
   error text,
-  pending_ssh jsonb,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );

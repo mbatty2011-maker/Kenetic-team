@@ -22,16 +22,15 @@ You are working on a task assigned by the user. Work through it fully and autono
 - Break the task into steps and execute each one using your tools
 - Think out loud before each tool call so the user can follow your reasoning
 - Produce REAL deliverables — documents, spreadsheets, drafts — not just advice
-- Do not ask for permission between steps (except SSH commands which auto-pause for confirmation)
+- Do not ask for permission between steps
 - When done, start your final message with "TASK COMPLETE:" and summarize what you built with all links
 `;
 
 export type TaskStep = {
-  type: "thinking" | "reasoning" | "tool_call" | "tool_result" | "confirm_required" | "done" | "error";
+  type: "thinking" | "reasoning" | "tool_call" | "tool_result" | "done" | "error";
   label: string;
   text?: string;
   tool?: string;
-  command?: string;
   timestamp: string;
 };
 
@@ -176,30 +175,6 @@ export async function POST(req: NextRequest) {
           const toolResults: Anthropic.ToolResultBlockParam[] = [];
 
           for (const tu of toolUses) {
-            if (tu.name === "run_ssh_command") {
-              const command = (tu.input as Record<string, string>).command;
-              const reason = (tu.input as Record<string, string>).reason ?? "";
-
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              await (supabase as any).rpc("update_task", {
-                p_task_id: task.id,
-                p_user_id: user.id,
-                p_status: "awaiting_confirmation",
-                p_steps: allSteps,
-                p_pending_ssh: {
-                  command,
-                  reason,
-                  tool_use_id: tu.id,
-                  messages: JSON.stringify([...messages]),
-                },
-              });
-
-              addStep({ type: "confirm_required", label: "SSH confirmation required", command });
-              send({ type: "confirm_ssh", task_id: task.id, command, reason });
-              controller.close();
-              return;
-            }
-
             const label = TOOL_LABELS[tu.name] ?? tu.name;
             addStep({ type: "tool_call", label, tool: tu.name });
 
