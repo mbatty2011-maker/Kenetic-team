@@ -12,6 +12,23 @@ import { logActivity, type AgentName, type ActivityContext } from "./tools/activ
 import * as gmail from "./tools/gmail";
 import * as calendar from "./tools/calendar";
 import { GoogleNotConnectedError } from "./tools/google-auth";
+import { StripeNotConnectedError } from "./tools/stripe-auth";
+import {
+  getStripeFinancialSummary,
+  getStripeMetric,
+  type StripeMetric,
+} from "./tools/stripe-data";
+import {
+  createSpreadsheet,
+  readSpreadsheet,
+  appendToSpreadsheet,
+  updateSpreadsheetRange,
+} from "./tools/sheets";
+import {
+  buildPnlSnapshot,
+  formatPnlSnapshotResult,
+  type PnlDelivery,
+} from "./tools/financial";
 import { runDesktopTool } from "./tools/desktopRun";
 import { checkDesktopSessionLimit } from "./tools/desktopRateLimit";
 
@@ -503,6 +520,164 @@ const CALENDAR_TOOLS = [
   CALENDAR_SUGGEST_TIME,
 ];
 
+// ─── Stripe + Sheets + P&L tools (Jeremy) ────────────────────────────────────
+
+const GET_STRIPE_FINANCIAL_SUMMARY: Anthropic.Tool = {
+  name: "get_stripe_financial_summary",
+  description:
+    "Pull a multi-metric financial summary live from the user's connected Stripe account: MRR, ARR, active subscriptions, trialing subs, customer counts, gross/net revenue and refunds in the window, failed payments, and top plans by MRR. Default first call when the user asks 'how is the business doing'. Read-only.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      period_days: {
+        type: "integer",
+        description: "Lookback window for revenue/refund/failed-payment counts (default 30, max 365).",
+        minimum: 1,
+        maximum: 365,
+      },
+    },
+  },
+};
+
+const GET_STRIPE_METRIC: Anthropic.Tool = {
+  name: "get_stripe_metric",
+  description:
+    "Pull a single named financial metric live from Stripe. Use for narrow follow-ups; for broad reports prefer get_stripe_financial_summary. Read-only.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      metric: {
+        type: "string",
+        enum: [
+          "mrr",
+          "arr",
+          "active_customers",
+          "new_customers",
+          "active_subscriptions",
+          "trials",
+          "gross_revenue",
+          "net_revenue",
+          "failed_payments",
+          "average_revenue_per_customer",
+        ],
+        description: "Which metric to retrieve.",
+      },
+      period_days: {
+        type: "integer",
+        description: "Lookback window in days (default 30, max 365). Ignored for point-in-time metrics like MRR.",
+        minimum: 1,
+        maximum: 365,
+      },
+    },
+    required: ["metric"],
+  },
+};
+
+const READ_GOOGLE_SHEET: Anthropic.Tool = {
+  name: "read_google_sheet",
+  description:
+    "Read values from a Google Sheet the user has shared (paste the URL or just the spreadsheet id). Returns rows as tab-separated text. Use to import historical data into your analysis.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      spreadsheet_id_or_url: {
+        type: "string",
+        description: "Spreadsheet URL or bare id.",
+      },
+      range: {
+        type: "string",
+        description:
+          "A1-notation range, e.g. 'Sheet1!A1:F50' or 'A1:Z100' (defaults to A1:Z100). Always quote tab names with spaces.",
+      },
+    },
+    required: ["spreadsheet_id_or_url"],
+  },
+};
+
+const WRITE_GOOGLE_SHEET: Anthropic.Tool = {
+  name: "write_google_sheet",
+  description:
+    "Create a new Google Sheet, append rows to an existing tab, or update a specific range. Use for forecasts, budgets, models the user wants to keep editing in Google. Returns the spreadsheet URL.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      mode: {
+        type: "string",
+        enum: ["create", "append", "update"],
+        description:
+          "create = new spreadsheet (provide title + rows). append = add rows to an existing sheet (provide spreadsheet_id_or_url + sheet_name + rows). update = overwrite a specific range (provide spreadsheet_id_or_url + range + rows).",
+      },
+      title: {
+        type: "string",
+        description: "Title for the new spreadsheet (mode=create only).",
+      },
+      spreadsheet_id_or_url: {
+        type: "string",
+        description: "Spreadsheet URL or bare id (mode=append or update).",
+      },
+      sheet_name: {
+        type: "string",
+        description: "Tab name to append to (mode=append).",
+      },
+      range: {
+        type: "string",
+        description: "A1-notation range to overwrite, e.g. 'Sheet1!A2:D50' (mode=update).",
+      },
+      headers: {
+        type: "array",
+        items: { type: "string" },
+        description: "Optional header row prepended to rows (mode=create or append).",
+      },
+      rows: {
+        type: "array",
+        items: { type: "array", items: { type: "string" } },
+        description: "Data rows (each row is an array of cell strings).",
+      },
+    },
+    required: ["mode", "rows"],
+  },
+};
+
+const BUILD_PNL_SNAPSHOT: Anthropic.Tool = {
+  name: "build_pnl_snapshot",
+  description:
+    "Compose a P&L snapshot from live Stripe revenue + user-supplied costs. By default produces both a Google Sheet (live, editable) and an XLSX download. Ask the user once for cost categories before calling unless they have already provided them.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      period_days: {
+        type: "integer",
+        description: "Lookback window for revenue (default 30, max 365).",
+        minimum: 1,
+        maximum: 365,
+      },
+      costs: {
+        type: "object" as const,
+        description:
+          "Cost categories as { category: amount-in-major-currency-units }, e.g. { Payroll: 30000, COGS: 5000, Tools: 800 }. Omit if the user truly has no costs.",
+        additionalProperties: { type: "number" },
+      },
+      title: {
+        type: "string",
+        description: "Optional title (defaults to 'P&L — Last Nd (YYYY-MM-DD)').",
+      },
+      deliver: {
+        type: "string",
+        enum: ["sheet", "xlsx", "both"],
+        description: "Output format (default 'both').",
+      },
+    },
+  },
+};
+
+const JEREMY_FINANCIAL_TOOLS = [
+  GET_STRIPE_FINANCIAL_SUMMARY,
+  GET_STRIPE_METRIC,
+  READ_GOOGLE_SHEET,
+  WRITE_GOOGLE_SHEET,
+  BUILD_PNL_SNAPSHOT,
+];
+
 // ─── Per-agent tool sets ─────────────────────────────────────────────────────
 
 const ALL_TOOLS = [CREATE_FILE, WEB_SEARCH, SEND_EMAIL, DRAFT_EMAIL, APPEND_TO_KB, GET_AGENT_OUTPUT];
@@ -511,11 +686,12 @@ const MAYA_TOOLS = [CREATE_FILE, WEB_SEARCH, APPEND_TO_KB, GET_AGENT_OUTPUT];
 
 const ALEX_TOOLS = [...ALL_TOOLS, ...GMAIL_TOOLS, ...CALENDAR_TOOLS, USE_DESKTOP];
 const DANA_TOOLS = [...ALL_TOOLS, ...GMAIL_TOOLS];
+const JEREMY_TOOLS = [...ALL_TOOLS, ...JEREMY_FINANCIAL_TOOLS];
 
-// AGENT_TOOLS: used in /api/chat — Alex gets Gmail+Calendar; Dana gets Gmail; Kai also gets propose_ssh + execute_code
+// AGENT_TOOLS: used in /api/chat — Alex gets Gmail+Calendar; Dana gets Gmail; Kai also gets propose_ssh + execute_code; Jeremy gets Stripe + Sheets + P&L
 export const AGENT_TOOLS: Partial<Record<AgentKey, Anthropic.Tool[]>> = {
   alex:   ALEX_TOOLS,
-  jeremy: ALL_TOOLS,
+  jeremy: JEREMY_TOOLS,
   kai:    [...ALL_TOOLS, PROPOSE_SSH, EXECUTE_CODE],
   dana:   DANA_TOOLS,
   marcus: ALL_TOOLS,
@@ -525,7 +701,7 @@ export const AGENT_TOOLS: Partial<Record<AgentKey, Anthropic.Tool[]>> = {
 // TASK_AGENT_TOOLS: used in /api/task — same but Kai gets run_ssh instead of propose_ssh
 export const TASK_AGENT_TOOLS: Partial<Record<AgentKey, Anthropic.Tool[]>> = {
   alex:   ALEX_TOOLS,
-  jeremy: ALL_TOOLS,
+  jeremy: JEREMY_TOOLS,
   kai:    [...ALL_TOOLS, RUN_SSH, EXECUTE_CODE],
   dana:   DANA_TOOLS,
   marcus: ALL_TOOLS,
@@ -562,6 +738,11 @@ export const TOOL_LABELS: Record<string, string> = {
   calendar_delete_event:    "Deleting event...",
   calendar_respond_to_event: "Responding to invite...",
   calendar_suggest_time:    "Finding free time...",
+  get_stripe_financial_summary: "Pulling Stripe metrics...",
+  get_stripe_metric:           "Pulling Stripe metric...",
+  read_google_sheet:           "Reading sheet...",
+  write_google_sheet:          "Writing sheet...",
+  build_pnl_snapshot:          "Building P&L snapshot...",
 };
 
 // ─── Content-to-text helpers (used so file content is saved in result) ───────
@@ -625,16 +806,25 @@ export async function executeAgentTool(
     return result;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    const errorTag =
+      err instanceof GoogleNotConnectedError
+        ? "google_not_connected"
+        : err instanceof StripeNotConnectedError
+        ? "stripe_not_connected"
+        : message;
     void logActivity({
       ctx: activityCtx,
       toolName: name,
       status: "failed",
       input,
-      error: err instanceof GoogleNotConnectedError ? "google_not_connected" : message,
+      error: errorTag,
       durationMs: Date.now() - startedAt,
     });
     if (err instanceof GoogleNotConnectedError) {
-      return "TOOL_ERROR: google_not_connected. The user has not connected their Google account. Tell them: 'You need to connect your Google account in Settings → Integrations before I can use Gmail or Calendar.' STOP. Do not retry.";
+      return "TOOL_ERROR: google_not_connected. The user has not connected their Google account. Tell them: 'You need to connect your Google account in Settings → Integrations before I can use Gmail, Calendar, or Sheets.' STOP. Do not retry.";
+    }
+    if (err instanceof StripeNotConnectedError) {
+      return "TOOL_ERROR: stripe_not_connected. The user has not connected their Stripe account. Tell them: 'Connect your Stripe account in Settings → Integrations and I'll pull the numbers.' STOP. Do not retry.";
     }
     return `Tool error (${name}): ${message}`;
   }
@@ -1040,6 +1230,124 @@ async function runAgentTool(
         const slots = await calendar.suggestTime(context.userId, { durationMinutes: duration, attendees, withinDays });
         if (slots.length === 0) return "No free slots found in the requested window.";
         return slots.map((s, i) => `[${i + 1}] ${s.start} → ${s.end}`).join("\n");
+      }
+
+      case "get_stripe_financial_summary": {
+        const tier = await getUserTier(context.supabase, context.userId);
+        if (tier === "free") {
+          return "TOOL_ERROR: Stripe analytics require a Solo plan or higher. Upgrade at knetc.team/pricing. STOP. Do not retry.";
+        }
+        const periodDays = input.period_days ? Number(input.period_days) : undefined;
+        return await getStripeFinancialSummary(context.userId, { periodDays });
+      }
+
+      case "get_stripe_metric": {
+        const tier = await getUserTier(context.supabase, context.userId);
+        if (tier === "free") {
+          return "TOOL_ERROR: Stripe analytics require a Solo plan or higher. Upgrade at knetc.team/pricing. STOP. Do not retry.";
+        }
+        const metric = input.metric as StripeMetric;
+        const allowed: StripeMetric[] = [
+          "mrr",
+          "arr",
+          "active_customers",
+          "new_customers",
+          "active_subscriptions",
+          "trials",
+          "gross_revenue",
+          "net_revenue",
+          "failed_payments",
+          "average_revenue_per_customer",
+        ];
+        if (!metric || !allowed.includes(metric)) {
+          return `TOOL_ERROR: Invalid metric "${metric}". Must be one of ${allowed.join(", ")}. STOP.`;
+        }
+        const periodDays = input.period_days ? Number(input.period_days) : undefined;
+        return await getStripeMetric(context.userId, metric, { periodDays });
+      }
+
+      case "read_google_sheet": {
+        const tier = await getUserTier(context.supabase, context.userId);
+        if (tier === "free") {
+          return "TOOL_ERROR: Sheet operations require a Solo plan or higher. Upgrade at knetc.team/pricing. STOP. Do not retry.";
+        }
+        const idOrUrl = ((input.spreadsheet_id_or_url as string) ?? "").trim();
+        const range = ((input.range as string) ?? "").trim() || "A1:Z100";
+        if (!idOrUrl) return "TOOL_ERROR: spreadsheet_id_or_url is required. STOP.";
+        const text = await readSpreadsheet(context.userId, idOrUrl, range);
+        return `Read ${range} from ${idOrUrl}:\n\n${text}`;
+      }
+
+      case "write_google_sheet": {
+        const tier = await getUserTier(context.supabase, context.userId);
+        if (tier === "free") {
+          return "TOOL_ERROR: Sheet operations require a Solo plan or higher. Upgrade at knetc.team/pricing. STOP. Do not retry.";
+        }
+        const mode = (input.mode as "create" | "append" | "update") ?? "";
+        const headers = (input.headers as string[]) ?? [];
+        const rows = (input.rows as string[][]) ?? [];
+        if (!Array.isArray(rows)) return "TOOL_ERROR: rows must be an array. STOP.";
+
+        const dataRows: (string | number)[][] = headers.length > 0 ? [headers, ...rows] : rows;
+
+        if (mode === "create") {
+          const title = ((input.title as string) ?? "").trim();
+          if (!title) return "TOOL_ERROR: title is required for mode=create. STOP.";
+          const sheet = await createSpreadsheet(context.userId, title, [
+            { name: "Sheet1", data: dataRows },
+          ]);
+          return `Sheet created (${rows.length} data rows). Include this link verbatim in your response so the user can open it:\n[${sheet.title}](${sheet.url})`;
+        }
+
+        if (mode === "append") {
+          const idOrUrl = ((input.spreadsheet_id_or_url as string) ?? "").trim();
+          const sheetName = ((input.sheet_name as string) ?? "").trim() || "Sheet1";
+          if (!idOrUrl) return "TOOL_ERROR: spreadsheet_id_or_url is required for mode=append. STOP.";
+          if (rows.length === 0 && headers.length === 0) {
+            return "TOOL_ERROR: rows (or headers) required for mode=append. STOP.";
+          }
+          const result = await appendToSpreadsheet(context.userId, idOrUrl, sheetName, dataRows);
+          return `Appended ${result.updatedRows} row(s) to ${sheetName} at ${result.updatedRange}.`;
+        }
+
+        if (mode === "update") {
+          const idOrUrl = ((input.spreadsheet_id_or_url as string) ?? "").trim();
+          const range = ((input.range as string) ?? "").trim();
+          if (!idOrUrl) return "TOOL_ERROR: spreadsheet_id_or_url is required for mode=update. STOP.";
+          if (!range) return "TOOL_ERROR: range is required for mode=update. STOP.";
+          if (rows.length === 0) return "TOOL_ERROR: rows are required for mode=update. STOP.";
+          const result = await updateSpreadsheetRange(context.userId, idOrUrl, range, dataRows);
+          return `Updated ${result.updatedCells} cells at ${result.updatedRange}.`;
+        }
+
+        return `TOOL_ERROR: mode must be create, append, or update. Got "${mode}". STOP.`;
+      }
+
+      case "build_pnl_snapshot": {
+        const tier = await getUserTier(context.supabase, context.userId);
+        if (tier === "free") {
+          return "TOOL_ERROR: P&L snapshots require a Solo plan or higher. Upgrade at knetc.team/pricing. STOP. Do not retry.";
+        }
+        const periodDays = input.period_days ? Number(input.period_days) : undefined;
+        const rawCosts = (input.costs ?? {}) as Record<string, unknown>;
+        const costs: Record<string, number> = {};
+        for (const [k, v] of Object.entries(rawCosts)) {
+          const n = typeof v === "number" ? v : Number(v);
+          if (Number.isFinite(n) && k.trim()) costs[k.trim()] = n;
+        }
+        const deliver = (input.deliver as PnlDelivery) ?? "both";
+        if (!["sheet", "xlsx", "both"].includes(deliver)) {
+          return `TOOL_ERROR: deliver must be sheet, xlsx, or both. STOP.`;
+        }
+        const titleInput = ((input.title as string) ?? "").trim();
+        const result = await buildPnlSnapshot(context.userId, {
+          periodDays,
+          costs,
+          deliver,
+          title: titleInput || undefined,
+        });
+        const finalTitle = titleInput || `P&L — Last ${result.periodDays}d (${result.asOf})`;
+        return formatPnlSnapshotResult(finalTitle, result);
       }
 
     default:

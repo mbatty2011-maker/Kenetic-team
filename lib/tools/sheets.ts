@@ -1,5 +1,10 @@
 import { getGoogleAccessToken } from "./google-auth";
 
+function extractSpreadsheetId(idOrUrl: string): string {
+  const idMatch = idOrUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  return idMatch ? idMatch[1] : idOrUrl;
+}
+
 export async function createSpreadsheet(
   userId: string,
   title: string,
@@ -52,9 +57,7 @@ export async function readSpreadsheet(
 ): Promise<string> {
   const token = await getGoogleAccessToken(userId);
 
-  // Accept either a full URL or a bare ID
-  const idMatch = spreadsheetIdOrUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
-  const spreadsheetId = idMatch ? idMatch[1] : spreadsheetIdOrUrl;
+  const spreadsheetId = extractSpreadsheetId(spreadsheetIdOrUrl);
 
   const encodedRange = encodeURIComponent(range);
   const res = await fetch(
@@ -71,4 +74,65 @@ export async function readSpreadsheet(
   if (rows.length === 0) return "Spreadsheet is empty or range has no data.";
 
   return rows.map((row) => row.join("\t")).join("\n");
+}
+
+export async function appendToSpreadsheet(
+  userId: string,
+  spreadsheetIdOrUrl: string,
+  sheetName: string,
+  rows: (string | number)[][]
+): Promise<{ updatedRange: string; updatedRows: number }> {
+  const token = await getGoogleAccessToken(userId);
+  const spreadsheetId = extractSpreadsheetId(spreadsheetIdOrUrl);
+  const range = `'${sheetName.replace(/'/g, "''")}'!A1`;
+  const encodedRange = encodeURIComponent(range);
+
+  const res = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodedRange}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ values: rows }),
+    }
+  );
+
+  if (!res.ok) {
+    throw new Error(`Failed to append to spreadsheet: ${await res.text()}`);
+  }
+  const data = (await res.json()) as {
+    updates?: { updatedRange?: string; updatedRows?: number };
+  };
+  return {
+    updatedRange: data.updates?.updatedRange ?? "",
+    updatedRows: data.updates?.updatedRows ?? rows.length,
+  };
+}
+
+export async function updateSpreadsheetRange(
+  userId: string,
+  spreadsheetIdOrUrl: string,
+  range: string,
+  rows: (string | number)[][]
+): Promise<{ updatedRange: string; updatedCells: number }> {
+  const token = await getGoogleAccessToken(userId);
+  const spreadsheetId = extractSpreadsheetId(spreadsheetIdOrUrl);
+  const encodedRange = encodeURIComponent(range);
+
+  const res = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodedRange}?valueInputOption=USER_ENTERED`,
+    {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ range, values: rows }),
+    }
+  );
+
+  if (!res.ok) {
+    throw new Error(`Failed to update spreadsheet range: ${await res.text()}`);
+  }
+  const data = (await res.json()) as { updatedRange?: string; updatedCells?: number };
+  return {
+    updatedRange: data.updatedRange ?? range,
+    updatedCells: data.updatedCells ?? 0,
+  };
 }

@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import FeedbackModal from "@/components/chat/FeedbackModal";
+import StripeConnectModal from "@/components/settings/StripeConnectModal";
 
 interface Profile {
   full_name: string;
@@ -23,6 +24,12 @@ interface KnowledgeBaseEntry {
 interface GoogleConnection {
   connected: boolean;
   email?: string;
+}
+
+interface StripeConnection {
+  connected: boolean;
+  account_label?: string | null;
+  livemode?: boolean | null;
 }
 
 export default function SettingsPage() {
@@ -45,6 +52,9 @@ export default function SettingsPage() {
   const [deleteState, setDeleteState] = useState<"idle" | "confirm" | "deleting">("idle");
   const [google, setGoogle] = useState<GoogleConnection>({ connected: false });
   const [disconnectingGoogle, setDisconnectingGoogle] = useState(false);
+  const [stripe, setStripe] = useState<StripeConnection>({ connected: false });
+  const [disconnectingStripe, setDisconnectingStripe] = useState(false);
+  const [showStripeModal, setShowStripeModal] = useState(false);
 
   useEffect(() => {
     loadProfile();
@@ -67,6 +77,27 @@ export default function SettingsPage() {
   useEffect(() => {
     loadGoogleStatus();
   }, [loadGoogleStatus]);
+
+  const loadStripeStatus = useCallback(async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase as any).rpc("get_oauth_connection_status", {
+      p_provider: "stripe",
+    });
+    if (error) {
+      setStripe({ connected: false });
+      return;
+    }
+    const row = (data as { account_label?: string | null; livemode?: boolean | null }[] | null)?.[0];
+    setStripe({
+      connected: !!row,
+      account_label: row?.account_label ?? null,
+      livemode: row?.livemode ?? null,
+    });
+  }, [supabase]);
+
+  useEffect(() => {
+    loadStripeStatus();
+  }, [loadStripeStatus]);
 
   // Surface OAuth callback outcomes (?google=connected|error) and clear the param.
   useEffect(() => {
@@ -198,6 +229,24 @@ export default function SettingsPage() {
       showToast(msg);
     } finally {
       setDisconnectingGoogle(false);
+    }
+  }
+
+  async function disconnectStripe() {
+    setDisconnectingStripe(true);
+    try {
+      const res = await fetch("/api/integrations/stripe/disconnect", { method: "POST" });
+      if (!res.ok) {
+        const { error } = await res.json().catch(() => ({ error: "Disconnect failed" }));
+        throw new Error(error ?? "Disconnect failed");
+      }
+      setStripe({ connected: false });
+      showToast("Stripe disconnected");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Disconnect failed";
+      showToast(msg);
+    } finally {
+      setDisconnectingStripe(false);
     }
   }
 
@@ -397,6 +446,36 @@ export default function SettingsPage() {
                 </a>
               )}
             </div>
+            <div className="px-4 py-3.5 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-white text-sm">Stripe (read-only)</div>
+                <div className="text-white/40 text-xs truncate" style={monoStyle}>
+                  {stripe.connected
+                    ? stripe.livemode === false
+                      ? `Connected (test mode)${stripe.account_label ? ` — ${stripe.account_label}` : ""}`
+                      : `Connected as ${stripe.account_label ?? "your Stripe account"}`
+                    : "Not connected — Jeremy needs this to pull MRR / revenue / P&L"}
+                </div>
+              </div>
+              {stripe.connected ? (
+                <button
+                  onClick={disconnectStripe}
+                  disabled={disconnectingStripe}
+                  className="px-3 py-1.5 text-red-400 border border-red-500/40 text-xs font-bold uppercase tracking-widest hover:bg-red-950/30 transition-colors disabled:opacity-40"
+                  style={monoStyle}
+                >
+                  {disconnectingStripe ? "Disconnecting…" : "Disconnect"}
+                </button>
+              ) : (
+                <button
+                  onClick={() => setShowStripeModal(true)}
+                  className={saveBtn}
+                  style={monoStyle}
+                >
+                  Connect
+                </button>
+              )}
+            </div>
           </div>
         </section>
 
@@ -539,6 +618,12 @@ export default function SettingsPage() {
       )}
 
       {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
+      {showStripeModal && (
+        <StripeConnectModal
+          onClose={() => setShowStripeModal(false)}
+          onConnected={loadStripeStatus}
+        />
+      )}
     </div>
   );
 }
