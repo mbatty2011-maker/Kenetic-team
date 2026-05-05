@@ -3,9 +3,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 export function sanitizeFilename(name: string): string {
   return (
     name
-      .replace(/\.[^.]+$/, "")       // strip extension
-      .replace(/[/\\?%*:|"<>]/g, "-")
-      .replace(/\s+/g, "-")
+      .replace(/\.[^.]+$/, "")          // strip extension (re-appended by uploadAgentFile)
+      .replace(/[^a-zA-Z0-9._-]/g, "-") // allowlist: em dashes, ampersands, whitespace, and any non-ASCII → "-"
       .replace(/-+/g, "-")
       .replace(/^-+|-+$/g, "")
       .slice(0, 80)
