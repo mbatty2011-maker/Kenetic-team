@@ -49,6 +49,16 @@ export async function middleware(request: NextRequest) {
   }
 
   if (!user && !isPublicPath) {
+    // /api/* callers are fetch/XHR, not browser navigation — they cannot
+    // follow an HTML login redirect, and `res.json()` on the login page
+    // body throws "Unexpected token <". Return JSON so the client can
+    // surface a real "session expired" error.
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
