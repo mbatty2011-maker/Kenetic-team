@@ -585,13 +585,29 @@ export default function Home() {
       </section>
 
       {/* ── FOOTER ───────────────────────────────────────────────── */}
-      <footer className="border-t border-white px-8 py-10 flex items-center justify-between">
+      <footer className="border-t border-white px-8 py-10 flex flex-wrap items-center justify-between gap-y-4 gap-x-8">
         <span
           className="text-sm font-bold tracking-[0.25em] uppercase"
           style={{ fontFamily: "var(--font-space-mono), monospace" }}
         >
           KNETC
         </span>
+        <div className="flex items-center gap-8">
+          <Link
+            href="/privacy"
+            className="text-sm uppercase tracking-widest opacity-50 hover:opacity-100 transition-opacity"
+            style={{ fontFamily: "var(--font-space-mono), monospace" }}
+          >
+            Privacy
+          </Link>
+          <Link
+            href="/terms"
+            className="text-sm uppercase tracking-widest opacity-50 hover:opacity-100 transition-opacity"
+            style={{ fontFamily: "var(--font-space-mono), monospace" }}
+          >
+            Terms
+          </Link>
+        </div>
         <span
           className="text-sm opacity-40"
           style={{ fontFamily: "var(--font-space-mono), monospace" }}
