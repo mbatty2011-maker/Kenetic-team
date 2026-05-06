@@ -215,7 +215,7 @@ export function formatPnlSnapshotResult(
     const size = result.fileSizeBytes ?? 0;
     const kb = Math.round(size / 1024);
     const sizeLabel = kb < 1024 ? `${kb} KB` : `${(kb / 1024).toFixed(1)} MB`;
-    lines.push(`- [${title}.xlsx (${sizeLabel}, 24h link)](${result.fileUrl})`);
+    lines.push(`- [${title}.xlsx](${result.fileUrl}) — ${sizeLabel}, 24h link`);
   }
   return lines.join("\n");
 }

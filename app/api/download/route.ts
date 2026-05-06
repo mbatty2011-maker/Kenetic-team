@@ -17,10 +17,16 @@ export async function GET(request: NextRequest) {
   const contentType = res.headers.get("content-type") ?? "application/octet-stream";
   const buffer = await res.arrayBuffer();
 
+  // RFC 6266: Content-Disposition with non-ASCII filenames must use the filename*=UTF-8''<pct-encoded>
+  // form. The plain filename= is an ASCII fallback for legacy clients; raw non-ASCII there will cause
+  // Node's HTTP layer to reject the response and the browser to surface "Site wasn't available".
+  const asciiFallback = filename.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "'");
+  const encodedUtf8 = encodeURIComponent(filename);
+
   return new NextResponse(buffer, {
     headers: {
       "Content-Type": contentType,
-      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Disposition": `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodedUtf8}`,
       "Content-Length": String(buffer.byteLength),
     },
   });
