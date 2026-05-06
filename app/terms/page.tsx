@@ -230,7 +230,7 @@ const SECTIONS: Section[] = [
       { type: "h3", num: "9.1", title: "Termination by You" },
       {
         type: "p",
-        text: "You may terminate your account at any time through account settings or by contacting mbatty2011@gmail.com. Termination does not entitle you to a refund of prepaid subscription fees.",
+        text: "You may terminate your account at any time through account settings or by contacting support@knetc.team. Termination does not entitle you to a refund of prepaid subscription fees.",
       },
       { type: "h3", num: "9.2", title: "Termination by Knetc" },
       {
@@ -324,7 +324,7 @@ const SECTIONS: Section[] = [
       { type: "h3", num: "14.1", title: "Informal Resolution" },
       {
         type: "p",
-        text: "Before initiating any formal dispute, you agree to contact Knetc at mbatty2011@gmail.com and attempt to resolve the dispute informally for at least 30 days.",
+        text: "Before initiating any formal dispute, you agree to contact Knetc at support@knetc.team and attempt to resolve the dispute informally for at least 30 days.",
       },
       { type: "h3", num: "14.2", title: "Binding Arbitration" },
       {
@@ -392,7 +392,7 @@ const SECTIONS: Section[] = [
           },
           {
             term: "Notices",
-            desc: "Notices to Knetc must be sent to mbatty2011@gmail.com. Notices to you will be sent to your account email address.",
+            desc: "Notices to Knetc must be sent to support@knetc.team. Notices to you will be sent to your account email address.",
           },
         ],
       },
@@ -409,10 +409,10 @@ const SECTIONS: Section[] = [
             label: "Email",
             value: (
               <a
-                href="mailto:mbatty2011@gmail.com"
+                href="mailto:support@knetc.team"
                 className="underline-offset-4 hover:underline"
               >
-                mbatty2011@gmail.com
+                support@knetc.team
               </a>
             ),
           },

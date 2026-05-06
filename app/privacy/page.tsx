@@ -31,7 +31,7 @@ const SECTIONS: Section[] = [
     blocks: [
       {
         type: "p",
-        text: "Knetc LLC is a limited liability company organized under the laws of the State of Utah, with its principal place of business at 1988 West 1150 North, Lehi, UT 84043. For privacy-related inquiries, contact us at mbatty2011@gmail.com.",
+        text: "Knetc LLC is a limited liability company organized under the laws of the State of Utah, with its principal place of business at 1988 West 1150 North, Lehi, UT 84043. For privacy-related inquiries, contact us at support@knetc.team.",
       },
     ],
   },
@@ -151,7 +151,7 @@ const SECTIONS: Section[] = [
     blocks: [
       {
         type: "p",
-        text: "We retain your data for as long as your account is active. Upon account deletion, your conversation history and uploaded documents are deleted within 30 days, and OAuth tokens are revoked and deleted within 7 days. Billing and tax records are retained for seven (7) years as required by IRS regulations and applicable state law. To request deletion, contact mbatty2011@gmail.com or use account settings.",
+        text: "We retain your data for as long as your account is active. Upon account deletion, your conversation history and uploaded documents are deleted within 30 days, and OAuth tokens are revoked and deleted within 7 days. Billing and tax records are retained for seven (7) years as required by IRS regulations and applicable state law. To request deletion, contact support@knetc.team or use account settings.",
       },
     ],
   },
@@ -182,7 +182,7 @@ const SECTIONS: Section[] = [
       },
       {
         type: "p",
-        text: "To exercise any right, contact mbatty2011@gmail.com. We will respond within 30 days.",
+        text: "To exercise any right, contact support@knetc.team. We will respond within 30 days.",
       },
     ],
   },
@@ -192,7 +192,7 @@ const SECTIONS: Section[] = [
     blocks: [
       {
         type: "p",
-        text: "California residents have the right to know, delete, correct, and opt out of the sale of personal information. We do not sell personal information. To submit a CCPA request, contact mbatty2011@gmail.com.",
+        text: "California residents have the right to know, delete, correct, and opt out of the sale of personal information. We do not sell personal information. To submit a CCPA request, contact support@knetc.team.",
       },
     ],
   },
@@ -202,7 +202,7 @@ const SECTIONS: Section[] = [
     blocks: [
       {
         type: "p",
-        text: "The Service is intended only for users who are at least 18 years of age. The Service is not directed to children, and we do not knowingly collect personal information from anyone under 18. If you believe we have collected information from a person under 18, contact mbatty2011@gmail.com immediately and we will promptly delete it.",
+        text: "The Service is intended only for users who are at least 18 years of age. The Service is not directed to children, and we do not knowingly collect personal information from anyone under 18. If you believe we have collected information from a person under 18, contact support@knetc.team immediately and we will promptly delete it.",
       },
     ],
   },
@@ -247,10 +247,10 @@ const SECTIONS: Section[] = [
             label: "Email",
             value: (
               <a
-                href="mailto:mbatty2011@gmail.com"
+                href="mailto:support@knetc.team"
                 className="underline-offset-4 hover:underline"
               >
-                mbatty2011@gmail.com
+                support@knetc.team
               </a>
             ),
           },
